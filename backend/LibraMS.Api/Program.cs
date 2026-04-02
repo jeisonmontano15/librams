@@ -1,4 +1,3 @@
-using System.Net.Http.Json;
 using System.Threading.RateLimiting;
 using Carter;
 using FluentValidation;
@@ -22,21 +21,15 @@ builder.Host.UseSerilog();
 var supabaseUrl = builder.Configuration["Supabase:Url"]
     ?? throw new InvalidOperationException("Supabase:Url not configured");
 
-// Fetch JWKS eagerly at startup so keys are available before first request
-var jwksUrl = supabaseUrl + "/auth/v1/.well-known/jwks.json";
-using var httpClient = new HttpClient();
-var jwks = await httpClient.GetFromJsonAsync<JsonWebKeySet>(jwksUrl)
-    ?? throw new InvalidOperationException("Failed to fetch JWKS from Supabase");
-var signingKeys = jwks.Keys;
-
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.Authority = supabaseUrl + "/auth/v1";
+        options.MetadataAddress = supabaseUrl + "/auth/v1/.well-known/openid-configuration";
         options.RequireHttpsMetadata = true;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKeys = signingKeys,
             ValidateIssuer = true,
             ValidIssuer = supabaseUrl + "/auth/v1",
             ValidateAudience = true,
