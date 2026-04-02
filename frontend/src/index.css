@@ -1,0 +1,17 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-paper text-ink-900 antialiased; }
+  * { @apply box-border; }
+}
+
+@layer components {
+  .input {
+    @apply w-full px-3 py-2 bg-paper-light border border-ink-200 rounded-sm text-sm font-sans
+           focus:outline-none focus:border-ink-400 focus:ring-1 focus:ring-ink-200
+           placeholder:text-ink-300 transition-colors;
+  }
+}
