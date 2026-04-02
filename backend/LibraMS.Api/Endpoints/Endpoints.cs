@@ -18,8 +18,8 @@ public class BookEndpoints : ICarterModule
             [FromQuery] string? query,
             [FromQuery] string? genre,
             [FromQuery] string? status,
-            [FromQuery] int page,
-            [FromQuery] int pageSize,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
             IBookRepository books) =>
         {
             BookStatus? bookStatus = status?.ToLower() switch
@@ -28,7 +28,7 @@ public class BookEndpoints : ICarterModule
                 "checked_out" => BookStatus.CheckedOut,
                 _ => null
             };
-            var result = await books.SearchAsync(new BookSearchRequest(query, genre, bookStatus, page > 0 ? page : 1, pageSize > 0 ? pageSize : 20));
+            var result = await books.SearchAsync(new BookSearchRequest(query, genre, bookStatus, page > 0 ? page.Value : 1, pageSize > 0 ? pageSize.Value : 20));
             return Results.Ok(result);
         });
 
