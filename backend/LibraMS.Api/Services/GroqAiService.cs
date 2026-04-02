@@ -24,14 +24,14 @@ public class GroqAiService(IConfiguration config, ILogger<GroqAiService> logger)
     // ── Feature 1: Auto-describe a book ──────────────────────────────────────
     public async Task<AiDescribeResponse> DescribeBookAsync(AiDescribeRequest req)
     {
-        var prompt = $"""
+        var prompt = $$"""
             You are a library catalogue assistant. Given a book's metadata, write a compelling
             2-3 sentence description for a library catalogue and suggest 1-2 genre tags.
 
-            Book: "{req.Title}" by {req.Author}{(req.Isbn != null ? $" (ISBN: {req.Isbn})" : "")}
+            Book: "{{req.Title}}" by {{req.Author}}{{(req.Isbn != null ? $" (ISBN: {req.Isbn})" : "")}}
 
             Respond ONLY with valid JSON — no markdown fences, no preamble, nothing else:
-            {{"description":"...","suggestedGenres":["Genre1","Genre2"]}}
+            {"description":"...","suggestedGenres":["Genre1","Genre2"]}
             """;
 
         var response = await CallGroqAsync(prompt);
@@ -53,20 +53,20 @@ public class GroqAiService(IConfiguration config, ILogger<GroqAiService> logger)
         AiSearchRequest req, IEnumerable<string> availableGenres)
     {
         var genreList = string.Join(", ", availableGenres);
-        var prompt = $"""
+        var prompt = $$"""
             You are a library search assistant. Parse the user's natural language query into
             structured search filters. Return only what the user explicitly asked for.
 
-            Available genres in the library: {genreList}
-            User query: "{req.NaturalQuery}"
+            Available genres in the library: {{genreList}}
+            User query: "{{req.NaturalQuery}}"
 
             Respond ONLY with valid JSON — no markdown fences, no preamble:
-            {{
+            {
               "query": "keyword to search in title/author/description, or null if not applicable",
               "genre": "exactly one genre from the list above, or null",
               "status": "available" | "checked_out" | null,
               "explanation": "one short sentence explaining what you understood"
-            }}
+            }
             """;
 
         var response = await CallGroqAsync(prompt);
@@ -103,21 +103,21 @@ public class GroqAiService(IConfiguration config, ILogger<GroqAiService> logger)
         var available = catalog.Where(b => b.Status == BookStatus.Available).Take(30).Select(b =>
             $"- [{b.Id}] \"{b.Title}\" by {b.Author} [{b.Genre}]");
 
-        var prompt = $"""
+        var prompt = $$"""
             You are a personalised library recommendation engine.
 
             User's recent reading history:
-            {string.Join("\n", history.DefaultIfEmpty("(no history yet)"))}
+            {{string.Join("\n", history.DefaultIfEmpty("(no history yet)"))}}
 
             Available books in the library (with their IDs):
-            {string.Join("\n", available)}
+            {{string.Join("\n", available)}}
 
             Recommend exactly 3 books. Prefer books from the available list and include their
             exact ID when recommending them. For external suggestions not in the list, set
             matchedBookId to null.
 
             Respond ONLY with valid JSON — no markdown fences, no preamble:
-            {{"recommendations":[{{"title":"...","author":"...","reason":"one sentence","matchedBookId":"uuid or null"}}]}}
+            {"recommendations":[{"title":"...","author":"...","reason":"one sentence","matchedBookId":"uuid or null"}]}
             """;
 
         var response = await CallGroqAsync(prompt);

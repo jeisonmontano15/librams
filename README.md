@@ -8,8 +8,8 @@ A full-stack library management system built with **.NET 8 Minimal API**, **Reac
 
 | Service | URL |
 |---------|-----|
-| Frontend | `https://librams.azurestaticapps.net` _(replace after deploy)_ |
-| API docs | `https://librams-api.azurewebsites.net/docs` |
+| Frontend | `https://librams.azurestaticapps.net` <!-- TODO: fill after first deploy --> |
+| API docs | `https://librams-api.azurewebsites.net/docs` <!-- TODO: fill after first deploy --> |
 
 **Demo accounts**
 
@@ -207,7 +207,7 @@ WEBSITES_PORT                =  8080
 5. **Deployment Center** → download the **Publish Profile** → save contents as GitHub secret `AZURE_WEBAPP_PUBLISH_PROFILE`
 6. Add GitHub secret `AZURE_WEBAPP_NAME` = `librams-api`
 
-> **F1 cold-start note:** Free tier has no "Always On" feature. The first request after ~5 minutes of inactivity takes 5–10 seconds to warm up. This is normal for the free tier and expected behavior.
+> **F1 cold-start note:** Free tier has no "Always On" feature. The first request after ~5 minutes of inactivity takes 5–10 seconds to warm up. This is normal for the free tier and expected behavior. The `GET /health` endpoint can be used as a warm-up probe URL — ping it before navigating to the app to pre-warm the instance.
 
 ### Part B — Frontend: Azure Static Web Apps (Free)
 
@@ -280,6 +280,21 @@ F1 is truly free with no time expiry. Container Apps consumption billing can cre
 
 **Why Azure Static Web Apps over Azure Storage static hosting?**
 SWA Free tier bundles CDN, HTTPS, custom domains, GitHub Actions, and SPA routing fallback — all at zero cost. Blob static hosting needs a CDN profile for HTTPS, which adds cost.
+
+## Overdue Loan Automation
+
+The database function `mark_overdue_loans()` must be scheduled to run periodically to flip loan status to `overdue`. Use Supabase's built-in `pg_cron` extension:
+
+1. **Database → Extensions** → search for `pg_cron` → enable it
+2. Open the **SQL Editor** and run:
+
+```sql
+SELECT cron.schedule('mark-overdue', '0 * * * *', $$SELECT mark_overdue_loans()$$);
+```
+
+This runs the function every hour on the hour. Adjust the cron expression as needed (e.g. `'0 */6 * * *'` for every 6 hours).
+
+---
 
 **Why Dapper over Entity Framework?**
 Full-text search with `to_tsvector`, the transactional checkout, and the overdue SQL function all map naturally to raw SQL. Dapper is precise and zero-overhead for these queries.

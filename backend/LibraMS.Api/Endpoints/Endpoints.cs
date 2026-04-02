@@ -54,8 +54,11 @@ public class BookEndpoints : ICarterModule
             return Results.Created($"/api/books/{book.Id}", book);
         }).RequireAuthorization("LibrarianOnly");
 
-        group.MapPut("/{id:guid}", async (Guid id, UpdateBookRequest req, IBookRepository books) =>
+        group.MapPut("/{id:guid}", async (Guid id, UpdateBookRequest req, IBookRepository books,
+            IValidator<UpdateBookRequest> validator) =>
         {
+            var validation = await validator.ValidateAsync(req);
+            if (!validation.IsValid) return Results.ValidationProblem(validation.ToDictionary());
             var book = await books.UpdateAsync(id, req);
             return book is null ? Results.NotFound() : Results.Ok(book);
         }).RequireAuthorization("LibrarianOnly");
@@ -137,7 +140,7 @@ public class AiEndpoints : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/ai").RequireAuthorization("AnyUser").WithOpenApi();
+        var group = app.MapGroup("/api/ai").RequireAuthorization("AnyUser").RequireRateLimiting("ai-limit").WithOpenApi();
 
         // Auto-describe a book
         group.MapPost("/describe", async (AiDescribeRequest req, IAiService ai) =>
@@ -164,6 +167,40 @@ public class AiEndpoints : ICarterModule
     }
 }
 
+// ── Users ─────────────────────────────────────────────────────────────────────
+public class UserEndpoints : ICarterModule
+{
+    public void AddRoutes(IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api/users").RequireAuthorization("AnyUser").WithOpenApi();
+
+        group.MapGet("/me", async (HttpContext ctx, IUserRepository users) =>
+        {
+            var userId = Guid.TryParse(
+                ctx.User.FindFirst("sub")?.Value ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value,
+                out var id) ? id : Guid.Empty;
+
+            if (userId == Guid.Empty) return Results.Unauthorized();
+
+            var email = ctx.User.FindFirst("email")?.Value ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
+            var name  = ctx.User.FindFirst("name")?.Value;
+
+            await users.EnsureExistsAsync(userId, email, name);
+            var user = await users.GetByIdAsync(userId);
+            return user is null ? Results.NotFound() : Results.Ok(user);
+        });
+    }
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────
+public class HealthEndpoints : ICarterModule
+{
+    public void AddRoutes(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+    }
+}
+
 // ── Validators ────────────────────────────────────────────────────────────────
 public class CreateBookValidator : AbstractValidator<CreateBookRequest>
 {
@@ -171,6 +208,17 @@ public class CreateBookValidator : AbstractValidator<CreateBookRequest>
     {
         RuleFor(x => x.Title).NotEmpty().MaximumLength(300);
         RuleFor(x => x.Author).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Isbn).MaximumLength(20).When(x => x.Isbn is not null);
+        RuleFor(x => x.PublishedYear).InclusiveBetween(1000, DateTime.UtcNow.Year + 1).When(x => x.PublishedYear is not null);
+    }
+}
+
+public class UpdateBookValidator : AbstractValidator<UpdateBookRequest>
+{
+    public UpdateBookValidator()
+    {
+        RuleFor(x => x.Title).MaximumLength(300).When(x => x.Title is not null);
+        RuleFor(x => x.Author).MaximumLength(200).When(x => x.Author is not null);
         RuleFor(x => x.Isbn).MaximumLength(20).When(x => x.Isbn is not null);
         RuleFor(x => x.PublishedYear).InclusiveBetween(1000, DateTime.UtcNow.Year + 1).When(x => x.PublishedYear is not null);
     }

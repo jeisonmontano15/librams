@@ -15,7 +15,14 @@ public interface IBookRepository
     Task<DashboardStats> GetStatsAsync();
 }
 
-public record DashboardStats(int TotalBooks, int Available, int CheckedOut, int Overdue, int TotalLoans);
+public record DashboardStats
+{
+    public int TotalBooks { get; init; }
+    public int Available { get; init; }
+    public int CheckedOut { get; init; }
+    public int Overdue { get; init; }
+    public int TotalLoans { get; init; }
+}
 
 public class BookRepository(DbConnectionFactory db) : IBookRepository
 {
@@ -38,7 +45,12 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
         if (req.Status.HasValue)
         {
             conditions.Add("status = @status");
-            parameters.Add("status", req.Status.Value.ToString().ToLower().Replace("_", ""));
+            parameters.Add("status", req.Status.Value switch
+            {
+                BookStatus.Available   => "available",
+                BookStatus.CheckedOut  => "checked_out",
+                _                      => req.Status.Value.ToString().ToLower()
+            });
         }
 
         var where = string.Join(" AND ", conditions);
@@ -104,7 +116,7 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
         using var conn = db.Create();
         var rows = await conn.ExecuteAsync(
             "UPDATE public.books SET status = @status WHERE id = @id",
-            new { status = status.ToString().ToLower().Replace("_", ""), id });
+            new { status = status switch { BookStatus.Available => "available", BookStatus.CheckedOut => "checked_out", _ => status.ToString().ToLower() }, id });
         return rows > 0;
     }
 
