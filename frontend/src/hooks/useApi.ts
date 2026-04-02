@@ -27,7 +27,7 @@ export function useBook(id: string | undefined) {
 export function useGenres() {
   return useQuery<string[]>({
     queryKey: ['genres'],
-    queryFn: () => api.get('/api/books/genres').then(r => r.data),
+    queryFn: () => api.get('/api/books/genres').then(r => Array.isArray(r.data) ? r.data : []),
     staleTime: 1000 * 60 * 5,
   });
 }

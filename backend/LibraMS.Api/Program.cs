@@ -63,6 +63,8 @@ builder.Services.AddScoped<IAiService, GroqAiService>();
 builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddHttpClient<IOpenLibraryService, OpenLibraryService>();
 builder.Services.AddCarter();
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
