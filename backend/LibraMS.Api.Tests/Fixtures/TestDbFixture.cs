@@ -1,4 +1,5 @@
 using Npgsql;
+using Xunit;
 
 namespace LibraMS.Api.Tests.Fixtures;
 

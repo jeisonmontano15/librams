@@ -3,6 +3,7 @@ using LibraMS.Api.Data;
 using LibraMS.Api.Models;
 using LibraMS.Api.Tests.Fixtures;
 using Microsoft.Extensions.Configuration;
+using Xunit;
 
 namespace LibraMS.Api.Tests.Repositories;
 
