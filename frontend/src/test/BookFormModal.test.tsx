@@ -34,7 +34,7 @@ describe('BookFormModal', () => {
       target: { value: 'Some Author' },
     });
 
-    fireEvent.click(screen.getByText('Add book'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add book' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith(

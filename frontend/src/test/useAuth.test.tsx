@@ -1,20 +1,18 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi } from 'vitest';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
+import { supabase } from '../lib/supabase';
 
 const mockSession = {
   user: { id: 'user-123', email: 'test@example.com' },
   access_token: 'fake-token',
 };
 
-const mockGetSession = vi.fn();
-const mockOnAuthStateChange = vi.fn();
-
 vi.mock('../lib/supabase', () => ({
   supabase: {
     auth: {
-      getSession: mockGetSession,
-      onAuthStateChange: mockOnAuthStateChange,
+      getSession: vi.fn(),
+      onAuthStateChange: vi.fn(),
       signInWithOAuth: vi.fn(),
       signOut: vi.fn(),
     },
@@ -29,13 +27,13 @@ vi.mock('../lib/api', () => ({
 
 describe('useAuth', () => {
   beforeEach(() => {
-    mockOnAuthStateChange.mockReturnValue({
+    vi.mocked(supabase.auth.onAuthStateChange).mockReturnValue({
       data: { subscription: { unsubscribe: vi.fn() } },
-    });
+    } as any);
   });
 
   it('returns null user when there is no session', async () => {
-    mockGetSession.mockResolvedValue({ data: { session: null } });
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: null } } as any);
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AuthProvider>{children}</AuthProvider>
@@ -49,7 +47,7 @@ describe('useAuth', () => {
   });
 
   it('returns user object when session exists', async () => {
-    mockGetSession.mockResolvedValue({ data: { session: mockSession } });
+    vi.mocked(supabase.auth.getSession).mockResolvedValue({ data: { session: mockSession } } as any);
 
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <AuthProvider>{children}</AuthProvider>
