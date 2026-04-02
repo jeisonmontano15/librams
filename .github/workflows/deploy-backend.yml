@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}/librams-api
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   build-and-deploy:
@@ -44,7 +44,7 @@ jobs:
           dotnet-version: '8.0.x'
 
       - name: Run backend tests
-        working-directory: backend
+        working-directory: backend/LibraMS.Api.Tests
         env:
           TEST_DB_CONNECTION_STRING: ${{ secrets.TEST_DB_CONNECTION_STRING }}
         run: dotnet test --configuration Release
