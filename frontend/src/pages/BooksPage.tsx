@@ -37,7 +37,7 @@ export function BooksPage() {
 
   const displayBooks = aiBooks ?? data?.items ?? [];
 
-  const debouncedSetQuery = useCallback(debounce((v: string) => { setQuery(v); setPage(1); }, 400), []);
+  const debouncedSetQuery = useCallback(debounce((v: unknown) => { setQuery(v as string); setPage(1); }, 400), []);
 
   const handleAiSearch = async () => {
     if (!aiQuery.trim()) return;
