@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Carter;
 using Dapper;
@@ -45,18 +46,34 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 {
                     using var client = new System.Net.Http.HttpClient();
                     var jwksUrl = supabaseUrl + "/auth/v1/.well-known/jwks.json";
-                    Log.Information("Fetching JWKS from {Url}", jwksUrl);
                     var json = client.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
-                    Log.Information("JWKS response: {Json}", json);
-                    var keySet = new Microsoft.IdentityModel.Tokens.JsonWebKeySet(json);
-                    var signingKeys = keySet.GetSigningKeys();
-                    Log.Information("JWKS returned {Count} signing keys", signingKeys.Count());
-                    return signingKeys;
+                    var keySet = new JsonWebKeySet(json);
+
+                    // Build ECDsa keys manually — GetSigningKeys() skips keys
+                    // with key_ops=["verify"] (Supabase uses this for public keys)
+                    var keys = new List<SecurityKey>();
+                    foreach (var jwk in keySet.Keys.Where(k => k.Kty == "EC"))
+                    {
+                        var ecParams = new ECParameters
+                        {
+                            Curve = ECCurve.NamedCurves.nistP256,
+                            Q = new ECPoint
+                            {
+                                X = Base64UrlEncoder.DecodeBytes(jwk.X),
+                                Y = Base64UrlEncoder.DecodeBytes(jwk.Y),
+                            }
+                        };
+                        var ecdsa = ECDsa.Create(ecParams);
+                        var ecKey = new ECDsaSecurityKey(ecdsa) { KeyId = jwk.Kid };
+                        keys.Add(ecKey);
+                    }
+                    Log.Information("JWKS resolved {Count} EC keys", keys.Count);
+                    return keys;
                 }
                 catch (Exception ex)
                 {
                     Log.Error(ex, "Failed to fetch JWKS from Supabase");
-                    return Enumerable.Empty<Microsoft.IdentityModel.Tokens.SecurityKey>();
+                    return Enumerable.Empty<SecurityKey>();
                 }
             },
         };
