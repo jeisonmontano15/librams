@@ -27,8 +27,7 @@ var supabaseUrl = builder.Configuration["Supabase:Url"]
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.Authority = supabaseUrl + "/auth/v1";
-        options.MetadataAddress = supabaseUrl + "/auth/v1/.well-known/openid-configuration";
+        options.Authority = null;
         options.RequireHttpsMetadata = true;
         options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
