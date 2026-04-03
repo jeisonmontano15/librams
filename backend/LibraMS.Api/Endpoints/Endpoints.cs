@@ -191,6 +191,10 @@ public class UserEndpoints : ICarterModule
             var user = await users.GetByIdAsync(userId);
             return user is null ? Results.NotFound() : Results.Ok(user);
         });
+
+        // Temporary debug endpoint — remove after confirming claim names
+        group.MapGet("/claims", (HttpContext ctx) =>
+            Results.Ok(ctx.User.Claims.Select(c => new { c.Type, c.Value })));
     }
 }
 
