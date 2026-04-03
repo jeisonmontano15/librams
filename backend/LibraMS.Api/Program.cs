@@ -1,5 +1,6 @@
 using System.Threading.RateLimiting;
 using Carter;
+using Dapper;
 using FluentValidation;
 using LibraMS.Api.Data;
 using LibraMS.Api.Middleware;
@@ -9,6 +10,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Serilog;
+
+DefaultTypeMap.MatchNamesWithUnderscores = true;
 
 var builder = WebApplication.CreateBuilder(args);
 
