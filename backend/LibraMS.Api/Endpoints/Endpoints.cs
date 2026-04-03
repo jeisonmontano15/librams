@@ -183,20 +183,33 @@ public class UserEndpoints : ICarterModule
             if (userId == Guid.Empty) return Results.Unauthorized();
 
             var email = ctx.User.FindFirst("email")?.Value ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
+
+            // Supabase stores Google profile data in user_metadata as a nested JSON object.
+            // ASP.NET Core's JWT handler exposes it as a single claim whose value is the JSON string.
             var name  = ctx.User.FindFirst("name")?.Value
-                     ?? ctx.User.FindFirst("full_name")?.Value
-                     ?? ctx.User.FindFirst("user_metadata:full_name")?.Value
-                     ?? ctx.User.FindFirst("user_metadata:name")?.Value
-                     ?? ctx.User.FindFirst("https://supabase.com/user_metadata/full_name")?.Value;
+                     ?? ctx.User.FindFirst("full_name")?.Value;
+
+            if (name is null)
+            {
+                var rawMeta = ctx.User.FindFirst("user_metadata")?.Value;
+                if (rawMeta is not null)
+                {
+                    try
+                    {
+                        var meta = System.Text.Json.JsonDocument.Parse(rawMeta).RootElement;
+                        name = meta.TryGetProperty("full_name", out var fn) ? fn.GetString()
+                             : meta.TryGetProperty("name",      out var n)  ? n.GetString()
+                             : null;
+                    }
+                    catch { /* not valid JSON, ignore */ }
+                }
+            }
 
             await users.EnsureExistsAsync(userId, email, name);
             var user = await users.GetByIdAsync(userId);
             return user is null ? Results.NotFound() : Results.Ok(user);
         });
 
-        // Temporary debug endpoint — remove after confirming claim names
-        app.MapGet("/api/users/claims", (HttpContext ctx) =>
-            Results.Ok(ctx.User.Claims.Select(c => new { c.Type, c.Value }))).AllowAnonymous();
     }
 }
 
