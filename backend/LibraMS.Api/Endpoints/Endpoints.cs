@@ -184,8 +184,10 @@ public class UserEndpoints : ICarterModule
 
             var email = ctx.User.FindFirst("email")?.Value ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
             var name  = ctx.User.FindFirst("name")?.Value
+                     ?? ctx.User.FindFirst("full_name")?.Value
                      ?? ctx.User.FindFirst("user_metadata:full_name")?.Value
-                     ?? ctx.User.FindFirst("user_metadata:name")?.Value;
+                     ?? ctx.User.FindFirst("user_metadata:name")?.Value
+                     ?? ctx.User.FindFirst("https://supabase.com/user_metadata/full_name")?.Value;
 
             await users.EnsureExistsAsync(userId, email, name);
             var user = await users.GetByIdAsync(userId);
@@ -193,8 +195,8 @@ public class UserEndpoints : ICarterModule
         });
 
         // Temporary debug endpoint — remove after confirming claim names
-        group.MapGet("/claims", (HttpContext ctx) =>
-            Results.Ok(ctx.User.Claims.Select(c => new { c.Type, c.Value })));
+        app.MapGet("/api/users/claims", (HttpContext ctx) =>
+            Results.Ok(ctx.User.Claims.Select(c => new { c.Type, c.Value }))).AllowAnonymous();
     }
 }
 
