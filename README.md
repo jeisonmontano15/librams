@@ -1,150 +1,191 @@
-# LibraMS — Library Management System
+# LibraMS - Library Management System
 
-A full-stack library management system built with **.NET 8 Minimal API**, **React + TypeScript**, **Supabase (PostgreSQL + Auth)**, and **Groq AI (free, no credit card)** — deployed entirely on **free Azure services**.
-
----
-
-## Live Demo
-
-| Service | URL |
-|---------|-----|
-| Frontend | `https://librams.azurestaticapps.net` <!-- TODO: fill after first deploy --> |
-| API docs | `https://librams-api.azurewebsites.net/docs` <!-- TODO: fill after first deploy --> |
-
-**Demo accounts**
-
-| Role | How to access |
-|------|---------------|
-| Member | Sign in with any Google account |
-| Librarian | Sign in → Supabase Dashboard → Table Editor → `library_users` → set `role = 'librarian'` |
+A full-stack library management system with AI-powered features, built with .NET 8, React, Supabase, and Groq AI. Deployed on free-tier Azure services.
 
 ---
 
-## Features
+## Architecture
 
-### Core
+LibraMS follows a **client-server architecture** with a clear separation between frontend and backend, connected through a RESTful API. Authentication is delegated to Supabase (Google OAuth + JWT), and AI capabilities are powered by Groq's free-tier LLM API.
 
-| Feature | Details |
-|---------|---------|
-| Book catalogue | Add, edit, delete books — title, author, ISBN, genre, year, description, cover |
-| Check-out | Members borrow books; 14-day loan period tracked automatically |
-| Check-in | Return books via My Loans or the Admin Loans panel |
-| Search | Full-text PostgreSQL search across title, author, description |
-| Filters | Filter by genre, availability status, or both |
-| Pagination | 20 books per page |
+```
+┌─────────────────────┐       ┌─────────────────────┐       ┌──────────────────┐
+│   React Frontend    │──────▶│   .NET 8 Minimal    │──────▶│    Supabase      │
+│   (Static Web App)  │  JWT  │   API (App Service)  │  SQL  │  (PostgreSQL +   │
+│                     │◀──────│                      │◀──────│   Auth + RLS)    │
+└─────────────────────┘       └──────────┬───────────┘       └──────────────────┘
+                                         │
+                              ┌──────────▼───────────┐
+                              │     Groq AI API      │
+                              │  (Llama 3.3 70B)     │
+                              └──────────────────────┘
+```
 
-### Authentication & Roles
+### Backend
 
-| Feature | Details |
-|---------|---------|
-| Google SSO | One-click sign-in via Supabase Auth OAuth |
-| JWT auth | Supabase-issued JWTs validated by the .NET API on every request |
-| Role: Member | Browse catalogue, search, check out/in own books, view recommendations |
-| Role: Librarian | Full CRUD on books, manage all loans, see overdue panel, use AI describe |
-| Row-level security | PostgreSQL RLS policies enforce access at the database level |
+The API is built with **ASP.NET Core Minimal API** using **Carter** for modular endpoint routing. Each resource (books, loans, AI, users) lives in its own Carter module. Data access uses **Dapper** with raw SQL, which maps naturally to PostgreSQL full-text search, transactions, and custom functions.
 
-### AI Features (Groq — permanently free, no credit card)
+**Key layers:**
+- **Endpoints** -- Carter modules handling HTTP routing, validation (FluentValidation), and authorization
+- **Repositories** -- Dapper-based data access (BookRepository, LoanRepository, UserRepository)
+- **Services** -- AI integration (GroqAiService), external APIs (OpenLibraryService)
+- **Middleware** -- RoleEnrichmentMiddleware injects user roles from the database into JWT claims after authentication
 
-| Feature | How to use |
-|---------|-----------|
-| **Smart search** | Toggle "AI search" in the catalogue — type naturally, e.g. _"available sci-fi with space travel"_ |
-| **Auto-describe** | Book detail page (librarian) → "AI describe" generates description + genre suggestions |
-| **Recommendations** | Dashboard shows 3 personalised picks based on borrowing history |
+**Authentication flow:** Supabase issues JWTs after Google OAuth sign-in. The API validates these tokens using Supabase's JWKS endpoint with ECC P-256 key support. After validation, the RoleEnrichmentMiddleware looks up the user's role (`member` or `librarian`) and adds it as a claim for authorization policies.
 
-### Bonus
+### Frontend
 
-- **Overdue tracking** — loans past due date highlighted red; librarians get a dedicated overdue tab
-- **Dashboard stats** — live counts: total, available, checked-out, overdue
-- **Reading history** — users can browse all previously borrowed books
-- **Open Library integration** — covers fetched from openlibrary.org by ISBN
-- **Scalar API docs** — interactive API explorer at `/docs`
-- **GitHub Actions CI/CD** — automatic deploys to Azure on every push to `main`
+A **React 18 SPA** built with TypeScript and Vite. Uses **TanStack React Query** for server state management, **React Router** for navigation, and **Tailwind CSS** for styling. The Supabase JS SDK handles authentication, and an Axios instance auto-injects JWT tokens into every API request.
+
+### Database
+
+**Supabase PostgreSQL** with:
+- Full-text search indexes on book title, author, and description using `to_tsvector`
+- Row-Level Security (RLS) policies enforcing access control at the database level
+- Automatic user profile creation via database triggers on auth signup
+- A `mark_overdue_loans()` function scheduled via `pg_cron` to flip loan statuses
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology | Cost |
-|-------|-----------|------|
-| Frontend | React 18 + TypeScript + Vite + Tailwind | Free |
-| Frontend hosting | Azure Static Web Apps (Free tier) | **Free forever** |
-| Backend | .NET 8 Minimal API + Carter + Dapper | Free |
-| Backend hosting | Azure App Service F1 (Free tier) | **Free forever** |
-| Database + Auth | Supabase Free tier (PostgreSQL + Google OAuth) | **Free forever** |
-| AI | Groq API — Llama 3.3 70B (free, no credit card) | **Free** |
-| CI/CD | GitHub Actions | Free |
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, TypeScript 5.6, Vite 5, Tailwind CSS 3.4, React Router 6, TanStack Query 5 |
+| Backend | .NET 8, ASP.NET Core Minimal API, Carter 8.2, Dapper 2.1, FluentValidation 11.9 |
+| Database & Auth | Supabase (PostgreSQL, Google OAuth, JWT, RLS) |
+| AI | Groq API (Llama 3.3 70B) via OpenAI-compatible SDK |
+| API Docs | Scalar OpenAPI Explorer (served at `/docs`) |
+| Hosting | Azure Static Web Apps (frontend), Azure App Service F1 (backend) |
+| CI/CD | GitHub Actions -- separate workflows for frontend and backend |
+| Testing | xunit + Microsoft.AspNetCore.Mvc.Testing (backend), Vitest + Testing Library (frontend) |
+| Containerization | Docker (Alpine-based multi-stage build) |
+
+---
+
+## Features
+
+### Book Catalogue
+- Full CRUD operations for librarians (create, edit, delete books)
+- Full-text PostgreSQL search across title, author, and description
+- Filter by genre, availability status, or both
+- Paginated results (20 books per page)
+- Book covers fetched from Open Library by ISBN
+
+### Loan Management
+- Members can check out books with a 14-day loan period
+- Check-in via My Loans page or the Admin Loans panel
+- Automatic overdue detection via scheduled database function
+- Reading history tracking for all previously borrowed books
+
+### Authentication & Authorization
+- Google SSO via Supabase Auth
+- JWT-based API authentication with ECC P-256 key validation
+- Two roles: **Member** (browse, borrow, view recommendations) and **Librarian** (full CRUD, manage all loans, overdue panel, AI describe)
+- Row-Level Security at the database level
+
+### AI Features (Groq -- free, no credit card)
+- **Smart Search** -- natural language queries like "available sci-fi with space travel", parsed into structured filters by the LLM
+- **Auto-Describe** -- generates book descriptions and genre suggestions from title/author/ISBN
+- **Recommendations** -- personalized picks based on borrowing history
+- Rate-limited to 10 requests per 60 seconds
+
+### Dashboard
+- Live statistics: total books, available, checked out, overdue, total loans
+- AI-powered book recommendations
+- Overdue tracking with visual indicators
 
 ---
 
 ## Project Structure
 
 ```
-librams/
-├── .github/
-│   └── workflows/
-│       ├── deploy-backend.yml      # Build Docker → push GHCR → Azure App Service
-│       └── deploy-frontend.yml     # Build React → Azure Static Web Apps
-├── README.md
+├── .claude/
+│   ├── commands/opsx/              # Slash command definitions
+│   │   ├── explore.md              # /opsx:explore -- think & investigate
+│   │   ├── propose.md              # /opsx:propose -- create change artifacts
+│   │   ├── apply.md                # /opsx:apply -- implement tasks
+│   │   └── archive.md              # /opsx:archive -- finalize & archive
+│   └── skills/                     # Skill implementations backing the commands
+├── openspec/
+│   ├── changes/                    # Active and archived OpenSpec changes
+│   └── specs/                      # Main specification library
+├── .github/workflows/
+│   ├── deploy-backend.yml          # Test → Build Docker → Push GHCR → Deploy Azure App Service
+│   └── deploy-frontend.yml         # Test → Build React → Deploy Azure Static Web Apps
 ├── backend/
-│   ├── Dockerfile                  # Alpine-based, Azure App Service Linux compatible
-│   └── LibraMS.Api/
-│       ├── Program.cs              # Minimal API bootstrap + DI
-│       ├── Endpoints/Endpoints.cs  # Carter modules: books, loans, AI
-│       ├── Models/Models.cs        # Domain records + DTOs
-│       ├── Data/
-│       │   ├── schema.sql          # Full DB schema + RLS policies + seed data
-│       │   ├── DbConnectionFactory.cs
-│       │   ├── BookRepository.cs   # Full-text search, CRUD, stats
-│       │   └── LoanRepository.cs   # Checkout/checkin with DB transactions
-│       ├── Services/
-│       │   ├── GroqAiService.cs    # All 3 AI features — OpenAI-compatible Groq SDK
-│       │   └── OpenLibraryService.cs
-│       └── Middleware/
-│           └── RoleEnrichmentMiddleware.cs
+│   ├── Dockerfile                  # Multi-stage Alpine build, exposes port 8080
+│   ├── LibraMS.Api/
+│   │   ├── Program.cs              # App bootstrap: auth, DI, CORS, rate limiting, middleware
+│   │   ├── Endpoints/Endpoints.cs  # Carter modules: books, loans, AI, users, health
+│   │   ├── Models/Models.cs        # Domain records, DTOs, enums
+│   │   ├── Data/
+│   │   │   ├── schema.sql          # Full DB schema, RLS policies, triggers, seed data
+│   │   │   ├── DbConnectionFactory.cs
+│   │   │   ├── BookRepository.cs   # Full-text search, CRUD, stats queries
+│   │   │   ├── LoanRepository.cs   # Checkout/checkin with DB transactions
+│   │   │   └── UserRepository.cs   # Profile lookup/creation
+│   │   ├── Services/
+│   │   │   ├── IAiService.cs       # AI service interface
+│   │   │   ├── GroqAiService.cs    # Groq/Llama integration via OpenAI SDK
+│   │   │   └── OpenLibraryService.cs
+│   │   └── Middleware/
+│   │       └── RoleEnrichmentMiddleware.cs
+│   └── LibraMS.Api.Tests/          # xunit integration tests
+│       ├── Fixtures/TestDbFixture.cs
+│       ├── Endpoints/BooksEndpointTests.cs
+│       └── Repositories/
+│           ├── BookRepositoryTests.cs
+│           └── LoanRepositoryTests.cs
 └── frontend/
+    ├── package.json
+    ├── vite.config.ts
+    ├── .env.example
     └── src/
-        ├── App.tsx
-        ├── pages/
-        │   ├── Dashboard.tsx       # Stats + AI recommendations
-        │   ├── BooksPage.tsx       # Catalogue + dual search (standard + AI)
-        │   ├── BookDetail.tsx      # Detail + checkout + AI describe
-        │   ├── MyLoans.tsx
-        │   ├── AdminLoans.tsx
-        │   └── LoginPage.tsx
+        ├── App.tsx                 # Routes, QueryClient, auth guard
+        ├── types/index.ts          # TypeScript interfaces mirroring backend models
+        ├── lib/
+        │   ├── supabase.ts         # Supabase client init
+        │   └── api.ts              # Axios with auto-injected JWT
         ├── hooks/
-        │   ├── useAuth.tsx
-        │   └── useApi.ts           # TanStack Query hooks for every endpoint
-        ├── components/
-        │   ├── layout/Layout.tsx
-        │   └── books/BookFormModal.tsx
-        └── lib/
-            ├── api.ts              # Axios with auto-injected Bearer token
-            └── supabase.ts
+        │   ├── useAuth.tsx         # Auth context: session, profile, role, sign-in/out
+        │   └── useApi.ts           # TanStack Query hooks for all endpoints
+        ├── pages/
+        │   ├── LoginPage.tsx       # Google SSO sign-in
+        │   ├── Dashboard.tsx       # Stats + AI recommendations
+        │   ├── BooksPage.tsx       # Catalogue with dual search (standard + AI)
+        │   ├── BookDetail.tsx      # Detail view, checkout, AI describe
+        │   ├── MyLoans.tsx         # User's active loans + history
+        │   └── AdminLoans.tsx      # Librarian: all loans + overdue panel
+        └── components/
+            ├── layout/Layout.tsx   # Sidebar navigation, user menu
+            └── books/BookFormModal.tsx
 ```
 
 ---
 
-## Local Development
+## Running Locally
 
 ### Prerequisites
 
-- Node.js 20+
-- .NET 8 SDK
-- Free [Supabase](https://supabase.com) account
-- Free [Groq](https://console.groq.com) API key — no credit card required
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [Node.js 20+](https://nodejs.org/)
+- [Supabase](https://supabase.com) account (free)
+- [Groq API key](https://console.groq.com) (free, no credit card)
 
-### 1 — Database setup
+### 1. Database Setup
 
-1. Create a Supabase project at [supabase.com](https://supabase.com)
-2. **SQL Editor** → run the entire contents of `backend/LibraMS.Api/Data/schema.sql`
-3. **Authentication → Providers** → enable **Google** → add OAuth credentials from Google Cloud Console
-4. Copy from **Project Settings → API**:
-   - Project URL
-   - `anon public` key
-   - JWT Secret (under JWT Settings)
-5. Copy the direct connection string from **Project Settings → Database**
+1. Create a new project at [supabase.com](https://supabase.com)
+2. Go to **SQL Editor** and run the full contents of [`backend/LibraMS.Api/Data/schema.sql`](backend/LibraMS.Api/Data/schema.sql)
+3. Enable **Google** under **Authentication > Providers** with your Google Cloud OAuth credentials
+4. From **Project Settings > API**, copy: Project URL, `anon public` key, JWT Secret
+5. From **Project Settings > Database**, copy the direct connection string
+6. *(Optional)* Enable `pg_cron` extension and schedule overdue detection:
+   ```sql
+   SELECT cron.schedule('mark-overdue', '0 * * * *', $$SELECT mark_overdue_loans()$$);
+   ```
 
-### 2 — Backend
+### 2. Backend
 
 ```bash
 cd backend/LibraMS.Api
@@ -161,169 +202,222 @@ dotnet run
 # Docs →  http://localhost:5000/docs
 ```
 
-### 3 — Frontend
+### 3. Frontend
 
 ```bash
 cd frontend
 cp .env.example .env.local
-# Edit .env.local — fill VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY, VITE_API_URL
+```
 
+Edit `.env.local`:
+```
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_API_URL=http://localhost:5000
+```
+
+```bash
 npm install
 npm run dev
 # App → http://localhost:5173
 ```
 
-### 4 — Make yourself a librarian
+### 4. Assign Librarian Role
 
-After first sign-in:
-1. Supabase Dashboard → **Table Editor** → `library_users`
-2. Find your row → change `role` from `member` to `librarian`
-3. Sign out and back in
+After your first sign-in, go to the Supabase Dashboard > **Table Editor** > `library_users`, find your row, and change `role` from `member` to `librarian`. Sign out and back in.
 
 ---
 
-## Deployment to Azure (all free)
-
-### Part A — Backend: Azure App Service F1
-
-**One-time setup in the Azure Portal:**
-
-1. Create a **Resource Group**: `librams-rg`
-2. **App Service Plan** → Free F1 tier, Linux OS
-3. **Web App** → Container → Linux
-   - Name: `librams-api` → gives `librams-api.azurewebsites.net`
-   - Publish: Container
-4. **Configuration → Application Settings** — add all environment variables:
-
-```
-ConnectionStrings__Supabase  =  Host=db.xxx.supabase.co;...
-Supabase__Url                =  https://xxx.supabase.co
-Supabase__JwtSecret          =  your-jwt-secret
-Groq__ApiKey                 =  gsk_...
-Frontend__Url                =  https://librams.azurestaticapps.net
-WEBSITES_PORT                =  8080
-```
-
-5. **Deployment Center** → download the **Publish Profile** → save contents as GitHub secret `AZURE_WEBAPP_PUBLISH_PROFILE`
-6. Add GitHub secret `AZURE_WEBAPP_NAME` = `librams-api`
-
-> **F1 cold-start note:** Free tier has no "Always On" feature. The first request after ~5 minutes of inactivity takes 5–10 seconds to warm up. This is normal for the free tier and expected behavior. The `GET /health` endpoint can be used as a warm-up probe URL — ping it before navigating to the app to pre-warm the instance.
-
-### Part B — Frontend: Azure Static Web Apps (Free)
-
-1. Azure Portal → **Static Web Apps** → Create
-   - Name: `librams`, Plan: **Free**
-   - Source: GitHub → your repo → branch `main`
-   - App location: `frontend`, Output location: `dist`
-2. Azure auto-creates a workflow file — **delete it** from your repo (we use our own)
-3. Copy the **Deployment Token** from the resource → save as GitHub secret `AZURE_STATIC_WEB_APPS_API_TOKEN`
-4. Add frontend secrets to GitHub:
-
-```
-VITE_SUPABASE_URL       =  https://xxx.supabase.co
-VITE_SUPABASE_ANON_KEY  =  your-anon-key
-VITE_API_URL            =  https://librams-api.azurewebsites.net
-```
-
-### Part C — Supabase: add redirect URL
-
-Supabase → **Authentication → URL Configuration** → Redirect URLs → add:
-```
-https://librams.azurestaticapps.net
-```
-
-### Trigger first deploy
+## Running Tests
 
 ```bash
-git add .
-git commit -m "initial deploy"
-git push origin main
-# Both GitHub Actions workflows fire automatically
-```
+# Backend (requires TEST_DB_CONNECTION_STRING environment variable)
+cd backend/LibraMS.Api.Tests
+dotnet test
 
-Check progress in the **Actions** tab of your GitHub repository.
+# Frontend
+cd frontend
+npm test
+```
 
 ---
 
 ## API Reference
 
-Full interactive docs at `/docs` (Scalar UI).
+Interactive API docs are available at `/docs` (Scalar UI) when the backend is running.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/books` | Public | Search: `query`, `genre`, `status`, `page`, `pageSize` |
-| GET | `/api/books/:id` | Public | Get single book |
-| GET | `/api/books/genres` | Public | List all genres |
-| GET | `/api/books/stats` | Member | Dashboard statistics |
-| POST | `/api/books` | Librarian | Create book |
-| PUT | `/api/books/:id` | Librarian | Update book |
-| DELETE | `/api/books/:id` | Librarian | Delete book |
-| POST | `/api/loans/checkout/:bookId` | Member | Check out a book |
-| POST | `/api/loans/checkin/:loanId` | Member | Return a book |
-| GET | `/api/loans/my` | Member | My active loans |
-| GET | `/api/loans/my/history` | Member | My loan history |
-| GET | `/api/loans/active` | Librarian | All active loans |
-| GET | `/api/loans/overdue` | Librarian | All overdue loans |
-| POST | `/api/ai/describe` | Librarian | AI-generate book description |
-| POST | `/api/ai/search` | Member | Natural language search |
-| GET | `/api/ai/recommend` | Member | Personalised recommendations |
+| `GET` | `/api/books` | Public | Search books -- query params: `query`, `genre`, `status`, `page`, `pageSize` |
+| `GET` | `/api/books/:id` | Public | Get single book by ID |
+| `GET` | `/api/books/genres` | Public | List all genres |
+| `GET` | `/api/books/stats` | Member | Dashboard statistics |
+| `POST` | `/api/books` | Librarian | Create a book |
+| `PUT` | `/api/books/:id` | Librarian | Update a book |
+| `DELETE` | `/api/books/:id` | Librarian | Delete a book |
+| `POST` | `/api/loans/checkout/:bookId` | Member | Check out a book |
+| `POST` | `/api/loans/checkin/:loanId` | Member | Return a book |
+| `GET` | `/api/loans/my` | Member | Current user's active loans |
+| `GET` | `/api/loans/my/history` | Member | Current user's loan history |
+| `GET` | `/api/loans/active` | Librarian | All active loans |
+| `GET` | `/api/loans/overdue` | Librarian | All overdue loans |
+| `POST` | `/api/ai/describe` | Librarian | AI-generate book description and genre suggestions |
+| `POST` | `/api/ai/search` | Member | Natural language search |
+| `GET` | `/api/ai/recommend` | Member | Personalized book recommendations |
+| `GET` | `/api/users/me` | Member | Get or create user profile |
+| `GET` | `/health` | Public | Health check endpoint |
+
+---
+
+## Deployment (Azure Free Tier)
+
+Both the frontend and backend are deployed automatically via GitHub Actions on push to `master`.
+
+### Backend -- Azure App Service F1
+
+1. Create a Resource Group, App Service Plan (Free F1, Linux), and Web App (Container)
+2. Set application settings:
+
+   | Variable | Value |
+   |----------|-------|
+   | `ConnectionStrings__Supabase` | PostgreSQL connection string |
+   | `Supabase__Url` | `https://xxx.supabase.co` |
+   | `Supabase__JwtSecret` | JWT secret from Supabase |
+   | `Groq__ApiKey` | `gsk_...` |
+   | `Frontend__Url` | `https://your-frontend.azurestaticapps.net` |
+   | `WEBSITES_PORT` | `8080` |
+
+3. Download the Publish Profile and save as GitHub secret `AZURE_WEBAPP_PUBLISH_PROFILE`
+4. Set GitHub secret `AZURE_WEBAPP_NAME`
+
+> **Note:** Free tier has no "Always On". First request after ~5 min idle takes 5-10s to cold-start. Hit `GET /health` to pre-warm.
+
+### Frontend -- Azure Static Web Apps
+
+1. Create a Static Web App (Free plan) linked to your GitHub repo
+2. Delete the auto-generated workflow (the repo has its own)
+3. Save the Deployment Token as GitHub secret `AZURE_STATIC_WEB_APPS_API_TOKEN`
+4. Set GitHub secrets: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_API_URL`
+
+### Supabase -- Redirect URL
+
+Add your frontend URL to **Authentication > URL Configuration > Redirect URLs** in Supabase.
 
 ---
 
 ## Design Decisions
 
-**Why Groq instead of OpenAI/Anthropic?**
-Groq is permanently free with no credit card. It's OpenAI SDK-compatible — switching to it is a single `base_url` and `model` change in `GroqAiService.cs`. Llama 3.3 70B on Groq delivers 300+ tokens/sec and handles structured JSON outputs reliably. If Groq rate limits become a bottleneck, swapping to Google AI Studio (Gemini Flash) or Mistral free tier requires changing only two lines.
+| Decision | Rationale |
+|----------|-----------|
+| **Groq over OpenAI/Anthropic** | Permanently free, no credit card. OpenAI SDK-compatible -- switching providers requires changing only `base_url` and `model` in GroqAiService. Llama 3.3 70B delivers 300+ tokens/sec with reliable JSON output. |
+| **Dapper over Entity Framework** | Full-text search with `to_tsvector`, transactional checkout, and the overdue SQL function all map naturally to raw SQL. Dapper adds zero overhead for these queries. |
+| **Carter for endpoints** | `ICarterModule` gives each resource its own clean class without controller boilerplate. |
+| **Azure App Service F1 over Container Apps** | Truly free with no time expiry. Container Apps consumption billing can creep in unexpectedly. |
+| **Azure Static Web Apps over Blob Storage** | SWA Free tier bundles CDN, HTTPS, custom domains, GitHub Actions integration, and SPA routing fallback at zero cost. |
+| **Supabase for auth + database** | Combines PostgreSQL, Google OAuth, JWT issuance, and RLS in one free-tier service, reducing infrastructure complexity. |
 
-**Why Azure App Service F1 over Azure Container Apps?**
-F1 is truly free with no time expiry. Container Apps consumption billing can creep in unexpectedly. For a demo, F1's simplicity and zero cost wins. The cold-start is documented and expected.
+---
 
-**Why Azure Static Web Apps over Azure Storage static hosting?**
-SWA Free tier bundles CDN, HTTPS, custom domains, GitHub Actions, and SPA routing fallback — all at zero cost. Blob static hosting needs a CDN profile for HTTPS, which adds cost.
+## Specification-Driven Development with OpenSpec
 
-## Overdue Loan Automation
+This project was designed, specified, and implemented using **OpenSpec** -- a structured workflow framework for AI-assisted software development. OpenSpec enforces a four-phase lifecycle for every change, ensuring that design decisions are captured as artifacts before any code is written.
 
-The database function `mark_overdue_loans()` must be scheduled to run periodically to flip loan status to `overdue`. Use Supabase's built-in `pg_cron` extension:
+### Change Lifecycle
 
-1. **Database → Extensions** → search for `pg_cron` → enable it
-2. Open the **SQL Editor** and run:
-
-```sql
-SELECT cron.schedule('mark-overdue', '0 * * * *', $$SELECT mark_overdue_loans()$$);
+```
+  Explore          Propose            Apply             Archive
+ ┌─────────┐    ┌───────────┐    ┌───────────┐    ┌───────────────┐
+ │ Think &  │───▶│ Create    │───▶│ Implement │───▶│ Finalize &    │
+ │ Discover │    │ Artifacts │    │ Tasks     │    │ Sync Specs    │
+ └─────────┘    └───────────┘    └───────────┘    └───────────────┘
+                 proposal.md       Code changes     Move to archive/
+                 design.md         Check off tasks   Sync delta specs
+                 tasks.md
 ```
 
-This runs the function every hour on the hour. Adjust the cron expression as needed (e.g. `'0 */6 * * *'` for every 6 hours).
+1. **Explore** -- investigate the problem space, map existing architecture, compare approaches. No code changes allowed -- this phase is purely for thinking.
+2. **Propose** -- create a formal change with three core artifacts:
+   - `proposal.md` -- what is being built and why, scope boundaries, constraints
+   - `design.md` -- how it will be built, technical approach, integration points
+   - `tasks.md` -- ordered implementation steps with markdown checkboxes
+3. **Apply** -- work through tasks sequentially, making code changes and checking off completed items. If implementation reveals design issues, artifacts can be updated mid-flight.
+4. **Archive** -- validate completion, sync any delta specs to the main spec library, and move the change to the timestamped archive.
+
+### Change History
+
+This project was built through the following OpenSpec changes:
+
+| Change | Description |
+|--------|-------------|
+| `librams-initial-implementation` | Full system build: .NET 8 API, React frontend, Supabase integration, Groq AI features, Azure deployment, CI/CD |
+| `librams-gap-fixes` | Post-implementation fixes: missing UserRepository, tsconfig, enum serialization bug, .gitignore, tests, rate limiting, health check, validators |
+
+### Directory Layout
+
+```
+openspec/
+├── changes/                        # Active changes (one subdirectory per change)
+│   ├── <change-name>/
+│   │   ├── .openspec.yaml          # Change metadata and schema
+│   │   ├── proposal.md             # What & why
+│   │   ├── design.md               # How
+│   │   ├── tasks.md                # Implementation steps (checkbox tracking)
+│   │   └── specs/                  # Delta specs (synced to main on archive)
+│   └── archive/                    # Completed changes (YYYY-MM-DD-<name>/)
+└── specs/                          # Main specification library
+```
+
+### Artifact Dependencies
+
+Artifacts follow a dependency chain: the proposal must be written before the design (which references it), and the design must be written before tasks. The `openspec status` CLI command tracks which artifacts are complete and which are ready to be created.
+
+### Delta Specs
+
+Each change can include spec modifications under `openspec/changes/<name>/specs/`. These delta specs describe new or modified capabilities (e.g., `api-rate-limiting`, `backend-testing`, `health-check`). On archive, they are synced to the main `openspec/specs/` tree, building up a living specification of the entire system.
 
 ---
 
-**Why Dapper over Entity Framework?**
-Full-text search with `to_tsvector`, the transactional checkout, and the overdue SQL function all map naturally to raw SQL. Dapper is precise and zero-overhead for these queries.
+## Claude Code Integration
 
-**Why Carter for endpoints?**
-`ICarterModule` puts each resource (books, loans, AI) in its own clean class. No controller boilerplate, easy to navigate in a code review.
+This project is configured for development with **Claude Code** (Anthropic's AI coding assistant). The `.claude/` directory contains custom slash commands and skills that integrate Claude Code with the OpenSpec workflow.
 
----
+### Slash Commands
 
-## Environment Variables Reference
+| Command | Description |
+|---------|-------------|
+| `/opsx:explore` | Enter explore mode -- a thinking partner for investigating problems, comparing approaches, and clarifying requirements. Claude reads the codebase and existing artifacts but does not write code. |
+| `/opsx:propose` | Create a new change with all artifacts generated in sequence. Provide a description or change name, and Claude creates the proposal, design, and tasks artifacts following OpenSpec's dependency model. |
+| `/opsx:apply` | Implement tasks from an active change. Claude reads all context artifacts (proposal, design, specs), then works through tasks sequentially -- making code changes and checking off items in `tasks.md`. |
+| `/opsx:archive` | Finalize a completed change. Validates artifact and task completion, offers to sync delta specs to the main spec library, and moves the change to the timestamped archive directory. |
 
-### Backend (App Service → Configuration → Application Settings)
+### How It Works
 
-| Variable | Description |
-|----------|-------------|
-| `ConnectionStrings__Supabase` | PostgreSQL direct connection string |
-| `Supabase__Url` | Supabase project URL |
-| `Supabase__JwtSecret` | JWT secret from Supabase project settings |
-| `Groq__ApiKey` | Groq API key from console.groq.com |
-| `Frontend__Url` | Frontend URL for CORS |
-| `WEBSITES_PORT` | Set to `8080` — required on Azure App Service Linux |
+The commands are defined in `.claude/commands/opsx/` and backed by skill implementations in `.claude/skills/`. When invoked, Claude Code:
 
-### Frontend (GitHub repository secrets → injected at build time)
+1. Uses the `openspec` CLI to query change status, artifact dependencies, and build instructions
+2. Reads existing artifacts for context before creating new ones or implementing tasks
+3. Follows the OpenSpec schema's rules for each artifact type (structure, constraints, dependencies)
+4. Tracks progress via markdown checkboxes in `tasks.md`
 
-| Variable | Description |
-|----------|-------------|
-| `VITE_SUPABASE_URL` | Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anon/public key |
-| `VITE_API_URL` | Backend API base URL |
+### Project Instructions (CLAUDE.md)
+
+The [CLAUDE.md](CLAUDE.md) file at the repository root provides Claude Code with project-level instructions: the OpenSpec workflow, CLI commands, directory layout, and artifact dependency model. This ensures Claude operates within the spec-driven workflow regardless of which slash command is used.
+
+### Example Workflow
+
+```bash
+# 1. Explore an idea
+/opsx:explore "should we add email notifications for overdue books?"
+
+# 2. Propose the change (creates proposal.md, design.md, tasks.md)
+/opsx:propose "add-overdue-notifications"
+
+# 3. Implement all tasks from the change
+/opsx:apply add-overdue-notifications
+
+# 4. Archive when complete
+/opsx:archive add-overdue-notifications
+```
 
 ---
 
