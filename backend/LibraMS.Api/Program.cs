@@ -38,6 +38,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateAudience = true,
             ValidAudience = "authenticated",
             ValidateLifetime = true,
+            ValidAlgorithms = new[] { "RS256", "ES256" },
         };
         options.Events = new JwtBearerEvents
         {
