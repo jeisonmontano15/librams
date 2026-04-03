@@ -183,7 +183,9 @@ public class UserEndpoints : ICarterModule
             if (userId == Guid.Empty) return Results.Unauthorized();
 
             var email = ctx.User.FindFirst("email")?.Value ?? ctx.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
-            var name  = ctx.User.FindFirst("name")?.Value;
+            var name  = ctx.User.FindFirst("name")?.Value
+                     ?? ctx.User.FindFirst("user_metadata:full_name")?.Value
+                     ?? ctx.User.FindFirst("user_metadata:name")?.Value;
 
             await users.EnsureExistsAsync(userId, email, name);
             var user = await users.GetByIdAsync(userId);

@@ -24,7 +24,9 @@ public class UserRepository(DbConnectionFactory db) : IUserRepository
         await conn.ExecuteAsync("""
             INSERT INTO public.library_users (id, email, display_name)
             VALUES (@id, @email, @displayName)
-            ON CONFLICT (id) DO NOTHING
+            ON CONFLICT (id) DO UPDATE
+                SET email        = EXCLUDED.email,
+                    display_name = COALESCE(EXCLUDED.display_name, public.library_users.display_name)
             """, new { id, email, displayName });
     }
 }
