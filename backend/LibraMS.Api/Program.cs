@@ -90,7 +90,8 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
         policy.WithOrigins(
                 builder.Configuration["Frontend:Url"] ?? "http://localhost:5173",
-                "https://*.vercel.app")
+                "https://*.vercel.app",
+                "https://*.azurestaticapps.net")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());
