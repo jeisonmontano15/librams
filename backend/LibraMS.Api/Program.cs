@@ -42,10 +42,23 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAlgorithms = new[] { "RS256", "ES256" },
             IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
             {
-                var client = new System.Net.Http.HttpClient();
-                var json = client.GetStringAsync(supabaseUrl + "/auth/v1/.well-known/jwks.json").GetAwaiter().GetResult();
-                var keys = new Microsoft.IdentityModel.Tokens.JsonWebKeySet(json);
-                return keys.GetSigningKeys();
+                try
+                {
+                    using var client = new System.Net.Http.HttpClient();
+                    var jwksUrl = supabaseUrl + "/auth/v1/.well-known/jwks.json";
+                    Log.Information("Fetching JWKS from {Url}", jwksUrl);
+                    var json = client.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
+                    Log.Information("JWKS response: {Json}", json);
+                    var keySet = new Microsoft.IdentityModel.Tokens.JsonWebKeySet(json);
+                    var signingKeys = keySet.GetSigningKeys();
+                    Log.Information("JWKS returned {Count} signing keys", signingKeys.Count());
+                    return signingKeys;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to fetch JWKS from Supabase");
+                    return Enumerable.Empty<Microsoft.IdentityModel.Tokens.SecurityKey>();
+                }
             },
         };
         options.Events = new JwtBearerEvents
