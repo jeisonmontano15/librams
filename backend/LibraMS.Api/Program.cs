@@ -30,6 +30,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         options.Authority = supabaseUrl + "/auth/v1";
         options.MetadataAddress = supabaseUrl + "/auth/v1/.well-known/openid-configuration";
         options.RequireHttpsMetadata = true;
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
@@ -39,6 +40,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = "authenticated",
             ValidateLifetime = true,
             ValidAlgorithms = new[] { "RS256", "ES256" },
+            IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
+            {
+                var client = new System.Net.Http.HttpClient();
+                var json = client.GetStringAsync(supabaseUrl + "/auth/v1/.well-known/jwks.json").GetAwaiter().GetResult();
+                var keys = new Microsoft.IdentityModel.Tokens.JsonWebKeySet(json);
+                return keys.GetSigningKeys();
+            },
         };
         options.Events = new JwtBearerEvents
         {
