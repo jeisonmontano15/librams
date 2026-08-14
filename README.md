@@ -173,6 +173,14 @@ A **React 18 SPA** built with TypeScript and Vite. Uses **TanStack React Query**
 - [Supabase](https://supabase.com) account (free)
 - [Groq API key](https://console.groq.com) (free, no credit card)
 
+Optional -- only needed to run the spec tooling described in
+[Specification-Driven Development with OpenSpec](#specification-driven-development-with-openspec).
+The application builds, tests, and runs without it:
+
+```bash
+npm install -g @fission-ai/openspec@1.2.0
+```
+
 ### 1. Database Setup
 
 1. Create a new project at [supabase.com](https://supabase.com)
@@ -347,24 +355,45 @@ This project was designed, specified, and implemented using **OpenSpec** -- a st
 
 This project was built through the following OpenSpec changes:
 
-| Change | Description |
-|--------|-------------|
-| `librams-initial-implementation` | Full system build: .NET 8 API, React frontend, Supabase integration, Groq AI features, Azure deployment, CI/CD |
-| `librams-gap-fixes` | Post-implementation fixes: missing UserRepository, tsconfig, enum serialization bug, .gitignore, tests, rate limiting, health check, validators |
+| Change | Status | Description |
+|--------|--------|-------------|
+| `librams-initial-implementation` | Archived | Full system build: .NET 8 API, React frontend, Supabase integration, Groq AI features, Azure deployment, CI/CD |
+| `librams-gap-fixes` | Archived | Post-implementation fixes: missing UserRepository, tsconfig, enum serialization bug, .gitignore, tests, rate limiting, health check, validators |
+
+### Specification Library
+
+Archiving those changes synced their delta specs into `openspec/specs/`, which now holds
+**46 requirements across 11 capabilities** -- a living specification of the system as built:
+
+| Capability | Requirements |
+|------------|--------------|
+| `book-management` | 8 |
+| `authentication-authorization` | 7 |
+| `book-search` | 6 |
+| `loan-management` | 6 |
+| `ai-features` | 5 |
+| `backend-testing` | 4 |
+| `frontend-testing` | 4 |
+| `api-rate-limiting` | 2 |
+| `book-cover-enrichment` | 2 |
+| `user-repository` | 2 |
+| `health-check` | 1 |
+
+Every spec passes `openspec validate <capability> --type spec --strict`.
 
 ### Directory Layout
 
 ```
 openspec/
-├── changes/                        # Active changes (one subdirectory per change)
-│   ├── <change-name>/
+├── changes/
+│   ├── <change-name>/              # Active changes (none at present)
 │   │   ├── .openspec.yaml          # Change metadata and schema
 │   │   ├── proposal.md             # What & why
 │   │   ├── design.md               # How
 │   │   ├── tasks.md                # Implementation steps (checkbox tracking)
 │   │   └── specs/                  # Delta specs (synced to main on archive)
 │   └── archive/                    # Completed changes (YYYY-MM-DD-<name>/)
-└── specs/                          # Main specification library
+└── specs/                          # Main specification library (11 capabilities)
 ```
 
 ### Artifact Dependencies
