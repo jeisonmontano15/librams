@@ -32,7 +32,11 @@ public class LibramsWebApplicationFactory : WebApplicationFactory<Program>
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Supabase:Url"] = "https://placeholder.supabase.co",
-                ["ConnectionStrings:Supabase"] = "Host=localhost;Database=test;Username=test;Password=test"
+                ["ConnectionStrings:Supabase"] = "Host=localhost;Database=test;Username=test;Password=test",
+                // Pinned so the CORS policy under test does not depend on ambient
+                // configuration: appsettings.json ships a placeholder Frontend:Url, and only
+                // a developer's user-secrets override it to the localhost dev origin.
+                ["Frontend:Url"] = "http://localhost:5173"
             });
         });
 
