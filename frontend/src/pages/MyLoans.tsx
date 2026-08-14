@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { BookMarked, RotateCcw, AlertCircle, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
 import { differenceInDays, format } from 'date-fns';
-import { useMyLoans, useMyLoanHistory, useCheckIn } from '../hooks/useApi';
+import { useMyLoans, useMyLoanHistory, useCheckIn, runMutation } from '../hooks/useApi';
 import toast from 'react-hot-toast';
 import type { Loan } from '../types';
 
@@ -13,8 +13,8 @@ export function MyLoans() {
   const navigate = useNavigate();
 
   const handleCheckIn = async (loan: Loan) => {
-    await checkIn(loan.id);
-    toast.success(`"${loan.book?.title}" returned!`);
+    const returned = await runMutation(checkIn(loan.id));
+    if (returned) toast.success(`"${loan.book?.title}" returned!`);
   };
 
   return (

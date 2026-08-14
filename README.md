@@ -47,6 +47,83 @@ A **React 18 SPA** built with TypeScript and Vite. Uses **TanStack React Query**
 
 ---
 
+## How Supabase Is Used
+
+Supabase plays **two separate roles** in LibraMS, and deliberately not a third one that its SDK would normally provide.
+
+| Role | Consumer | Mechanism |
+|------|----------|-----------|
+| **Identity provider** | Frontend | `supabase-js` with the anon key -- **auth only** |
+| **Managed PostgreSQL** | Backend | Raw Npgsql/TCP on port 5432 via Dapper |
+| ~~Data API (PostgREST)~~ | -- | **Not used.** No `.from()` calls exist in the frontend |
+
+The frontend never reads or writes data through the Supabase SDK. It obtains a JWT and nothing else; every byte of application data flows through the .NET API. This keeps all business rules -- loan limits, availability transitions, role checks -- in one enforceable place.
+
+### End-to-End Flow
+
+```
+   Browser                Supabase                 .NET API              Postgres
+      │                      │                        │                     │
+ ┌────┴─────────────────── SIGN-IN ────────────────────────────────────────────┐
+      │  signInWithOAuth     │                        │                     │
+      │─────────────────────▶│  ◀── Google OIDC ──▶   │                     │
+      │                      │────── upsert auth.users ─────────────────────▶│
+      │                      │                        │   trigger fires:    │
+      │                      │                        │   handle_new_user() │
+      │                      │                        │   creates profile   │
+      │                      │                        │   role='member'     │
+      │  ◀── ES256 JWT ──────│                        │                     │
+ └─────────────────────────────────────────────────────────────────────────────┘
+      │                      │                        │                     │
+ ┌────┴─────────────────── API CALL ───────────────────────────────────────────┐
+      │  Authorization: Bearer <JWT>                  │                     │
+      │──────────────────────────────────────────────▶│                     │
+      │                      │  ◀── fetch JWKS ───────│  validate signature │
+      │                      │                        │                     │
+      │                      │                        │─ SELECT role ──────▶│
+      │                      │                        │  inject user_role   │
+      │                      │                        │  claim, check policy│
+      │                      │                        │                     │
+      │                      │                        │─ Dapper query ─────▶│
+      │  ◀───────────────────────── JSON response ────│                     │
+ └─────────────────────────────────────────────────────────────────────────────┘
+```
+
+A PlantUML source of this diagram, with more detail, lives at [`docs/supabase-usage.puml`](docs/supabase-usage.puml).
+
+### The Four Integration Points
+
+**1. Auth client** -- [`frontend/src/lib/supabase.ts`](frontend/src/lib/supabase.ts) creates the client from `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. [`hooks/useAuth.tsx`](frontend/src/hooks/useAuth.tsx) wraps it in a React context exposing `signInWithGoogle`, `signOut`, and the current session, and subscribes to `onAuthStateChange`.
+
+**2. Token attachment** -- [`frontend/src/lib/api.ts`](frontend/src/lib/api.ts) registers an Axios request interceptor that calls `getSession()` and sets `Authorization: Bearer <access_token>` on every outgoing request.
+
+**3. Token validation** -- [`Program.cs`](backend/LibraMS.Api/Program.cs) configures `JwtBearer` with `ValidIssuer = {Supabase:Url}/auth/v1` and `ValidAudience = "authenticated"`. Keys come from Supabase's JWKS endpoint through a custom `IssuerSigningKeyResolver`.
+
+> **Why the resolver is hand-written:** Supabase publishes its public keys with `key_ops: ["verify"]`, and `JsonWebKeySet.GetSigningKeys()` silently skips those keys -- yielding an empty key set and a blanket 401. The resolver therefore constructs `ECDsaSecurityKey` instances directly from the JWK `x`/`y` coordinates on the P-256 curve. OIDC auto-discovery is also disabled (`Authority = null`) so this resolver is actually consulted.
+
+**4. Role resolution** -- Supabase JWTs carry no application role. [`RoleEnrichmentMiddleware`](backend/LibraMS.Api/Middleware/RoleEnrichmentMiddleware.cs) runs after authentication, reads `sub` from the validated principal, queries `library_users.role`, and injects a `user_role` claim that the `LibrarianOnly` policy consumes.
+
+### How the Two User Tables Connect
+
+Supabase owns `auth.users`; the application owns `public.library_users`. They are bound by a foreign key and kept in sync by a trigger:
+
+```sql
+id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+```
+
+On insert into `auth.users`, the `on_auth_user_created` trigger calls `handle_new_user()` (a `SECURITY DEFINER` function), which creates the matching profile with `role = 'member'`. Promotion to `librarian` is a manual update -- see [Assign Librarian Role](#4-assign-librarian-role).
+
+### A Note on RLS
+
+[`schema.sql`](backend/LibraMS.Api/Data/schema.sql) enables Row-Level Security on all three tables and defines a complete policy set. Two things are worth understanding about how those policies behave in practice:
+
+- **The backend bypasses them.** It connects as the `postgres` superuser, which is exempt from RLS. Authorization for API traffic is enforced entirely by the middleware and policies described above. The RLS rules are a second line of defence, not the primary one.
+- **They matter because the anon key is public.** `VITE_SUPABASE_ANON_KEY` ships to every browser. RLS is the only thing preventing a holder of that key from reading or writing the tables directly through PostgREST, bypassing the API completely.
+
+> **Verify before deploying:** confirm RLS is actually enabled on the live project (Supabase Dashboard > **Authentication** > **Policies**, or run `SELECT relname, relrowsecurity FROM pg_class WHERE relname IN ('books','loans','library_users')`). A database provisioned before `schema.sql` was applied in full can end up with the tables present but RLS off, which leaves them openly readable and writable via the anon key.
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -247,6 +324,15 @@ dotnet test
 cd frontend
 npm test
 ```
+
+Without `TEST_DB_CONNECTION_STRING` the database-backed tests report as **skipped**, not
+passed. A run you can trust reports `0 skipped`.
+
+### Manual Smoke Test
+
+The flows the automated suite cannot reach -- OAuth sign-in, checkout, check-in, and
+clearing a book field -- are covered by [SMOKE-TEST.md](SMOKE-TEST.md), which runs against
+either a local stack or production and names the defect each step guards.
 
 ---
 

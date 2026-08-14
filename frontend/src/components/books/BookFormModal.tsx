@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Sparkles } from 'lucide-react';
-import { useAiDescribe } from '../../hooks/useApi';
+import { useAiDescribe, runMutation } from '../../hooks/useApi';
+import { useAuth } from '../../hooks/useAuth';
 import type { Book, CreateBookForm } from '../../types';
 
 interface Props {
@@ -10,8 +11,20 @@ interface Props {
   loading: boolean;
 }
 
+// Mirrors the FluentValidation rules on CreateBookRequest/UpdateBookRequest. The year bound
+// in particular used to disagree outright: the form allowed up to 2099 while the API rejects
+// anything past next year, so those values were accepted here and refused on submit.
+const MAX_TITLE = 300;
+const MAX_AUTHOR = 200;
+const MAX_ISBN = 20;
+const MIN_YEAR = 1000;
+const maxYear = () => new Date().getUTCFullYear() + 1;
+
 export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props) {
   const { mutateAsync: aiDescribe, isPending: aiLoading } = useAiDescribe();
+  // /api/ai/describe is librarian-only. Showing the button to members produced a 403 that
+  // nothing surfaced, so the control is hidden for anyone who cannot use it.
+  const { isLibrarian } = useAuth();
   const [form, setForm] = useState<CreateBookForm>({
     title:         initialData?.title ?? '',
     author:        initialData?.author ?? '',
@@ -28,13 +41,24 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
 
   const handleAiDescribe = async () => {
     if (!form.title || !form.author) return;
-    const result = await aiDescribe({ title: form.title, author: form.author, isbn: form.isbn });
+    const result = await runMutation(aiDescribe({ title: form.title, author: form.author, isbn: form.isbn }));
+    if (!result) return;
     setForm(f => ({ ...f, description: result.description }));
     setAiGenres(result.suggestedGenres);
   };
 
+  // `min`/`max` on a number input are advisory unless the browser runs constraint validation,
+  // and a year typed directly still reaches the API. Checking here means the mismatch is
+  // reported next to the field instead of coming back as a 400.
+  const yearError =
+    form.publishedYear !== undefined &&
+    (form.publishedYear < MIN_YEAR || form.publishedYear > maxYear())
+      ? `Year must be between ${MIN_YEAR} and ${maxYear()}.`
+      : null;
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (yearError) return;
     await onSubmit(form);
   };
 
@@ -54,18 +78,18 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
         <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Title *" required>
-              <input required value={form.title} onChange={e => set('title', e.target.value)}
+              <input required maxLength={MAX_TITLE} value={form.title} onChange={e => set('title', e.target.value)}
                 className="input" placeholder="Book title" />
             </Field>
             <Field label="Author *" required>
-              <input required value={form.author} onChange={e => set('author', e.target.value)}
+              <input required maxLength={MAX_AUTHOR} value={form.author} onChange={e => set('author', e.target.value)}
                 className="input" placeholder="Author name" />
             </Field>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
             <Field label="ISBN">
-              <input value={form.isbn ?? ''} onChange={e => set('isbn', e.target.value)}
+              <input maxLength={MAX_ISBN} value={form.isbn ?? ''} onChange={e => set('isbn', e.target.value)}
                 className="input" placeholder="978…" />
             </Field>
             <Field label="Genre">
@@ -74,7 +98,8 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
             </Field>
             <Field label="Year">
               <input type="number" value={form.publishedYear ?? ''} onChange={e => set('publishedYear', e.target.value ? Number(e.target.value) : undefined)}
-                className="input" placeholder="2024" min={1000} max={2099} />
+                className="input" placeholder="2024" min={MIN_YEAR} max={maxYear()} />
+              {yearError && <p className="text-xs text-red-600 font-sans mt-1">{yearError}</p>}
             </Field>
           </div>
 
@@ -85,13 +110,13 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
 
           <Field
             label="Description"
-            action={
+            action={isLibrarian ? (
               <button type="button" onClick={handleAiDescribe} disabled={aiLoading || !form.title || !form.author}
                 className="flex items-center gap-1 text-xs text-ochre hover:text-ochre-dark disabled:opacity-50">
                 <Sparkles size={11} />
                 {aiLoading ? 'Generating…' : 'AI generate'}
               </button>
-            }
+            ) : undefined}
           >
             <textarea value={form.description ?? ''} onChange={e => set('description', e.target.value)}
               rows={3} className="input resize-none" placeholder="Book description…" />
@@ -115,7 +140,7 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
               className="px-4 py-2 border border-ink-200 text-ink-600 text-sm font-sans rounded-sm hover:bg-ink-100 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading || !!yearError}
               className="px-4 py-2 bg-ink-900 text-paper text-sm font-sans rounded-sm hover:bg-ink-700 transition-colors disabled:opacity-60">
               {loading ? 'Saving…' : initialData ? 'Update book' : 'Add book'}
             </button>

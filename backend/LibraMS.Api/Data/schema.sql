@@ -68,6 +68,11 @@ CREATE TABLE IF NOT EXISTS public.loans (
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Borrower's email denormalised onto the loan, so librarian views can show who holds a
+-- book without joining library_users, and the address is preserved as it was at checkout.
+-- Nullable and IF NOT EXISTS: safe against the live database and any pre-existing rows.
+ALTER TABLE public.loans ADD COLUMN IF NOT EXISTS user_email TEXT;
+
 CREATE INDEX IF NOT EXISTS loans_user_idx ON public.loans (user_id);
 CREATE INDEX IF NOT EXISTS loans_book_idx ON public.loans (book_id);
 CREATE INDEX IF NOT EXISTS loans_status_idx ON public.loans (status);

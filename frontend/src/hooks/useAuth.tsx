@@ -28,6 +28,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else setLoading(false);
     });
 
+    // SIGNED_OUT fires when the api interceptor signs out after a 401, which is what turns
+    // an expired session into a redirect to /login rather than a stale, silently broken page.
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s);
       if (s) fetchProfile();

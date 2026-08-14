@@ -1,0 +1,104 @@
+@startuml supabase-usage
+!theme plain
+title LibraMS — How Supabase Is Used
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam ArrowColor #3E4C59
+skinparam RectangleBorderColor #3E4C59
+
+' ── Actors ────────────────────────────────────────────────────────────────────
+actor "Member /\nLibrarian" as User
+
+' ── Frontend ──────────────────────────────────────────────────────────────────
+package "Frontend — React + Vite\n(Vercel / Azure Static Web Apps)" #F7F9FB {
+  component "supabase-js client\nlib/supabase.ts" as SbClient
+  component "AuthProvider\nhooks/useAuth.tsx" as AuthCtx
+  component "axios instance\nlib/api.ts" as Axios
+}
+note right of SbClient
+  createClient(
+    VITE_SUPABASE_URL,
+    VITE_SUPABASE_ANON_KEY)
+  **Auth only** — no PostgREST
+  data calls are made.
+end note
+
+' ── Supabase (managed platform) ───────────────────────────────────────────────
+package "Supabase Project\nxomlcnrubaiofmbxnovx.supabase.co" #EEF6FF {
+  component "GoTrue Auth\n/auth/v1" as GoTrue
+  component "JWKS endpoint\n/auth/v1/.well-known/jwks.json" as JWKS
+
+  database "Postgres 16" as PG {
+    component "auth.users\n(managed by GoTrue)" as AuthUsers
+    component "public.library_users\nid FK -> auth.users(id)\nrole: librarian | member" as LibUsers
+    component "public.books" as Books
+    component "public.loans" as Loans
+    component "trigger on_auth_user_created\n-> handle_new_user()\n(SECURITY DEFINER)" as Trigger
+  }
+}
+
+' ── Backend ───────────────────────────────────────────────────────────────────
+package "Backend — .NET 9 Minimal API\n(Docker / Railway)" #F7FBF7 {
+  component "JwtBearer auth\nProgram.cs" as JwtBearer
+  component "IssuerSigningKeyResolver\n(manual ECDsa from JWKS)" as KeyResolver
+  component "RoleEnrichmentMiddleware" as RoleMw
+  component "Authorization policies\nLibrarianOnly / AnyUser" as Policies
+  component "Carter endpoints" as Endpoints
+  component "DbConnectionFactory\n+ Dapper repositories" as Repos
+}
+
+' ── External ──────────────────────────────────────────────────────────────────
+component "Google OAuth" as Google
+component "Open Library API" as OpenLib
+component "Groq AI" as Groq
+
+' ══ 1. Sign-in flow ═══════════════════════════════════════════════════════════
+User        --> AuthCtx      : click "Sign in with Google"
+AuthCtx     --> SbClient     : signInWithOAuth({ provider: 'google' })
+SbClient    --> GoTrue       : <b>1.</b> OAuth redirect
+GoTrue      <--> Google      : <b>2.</b> OIDC handshake
+GoTrue      --> AuthUsers    : <b>3.</b> upsert identity
+AuthUsers   --> Trigger      : <b>4.</b> AFTER INSERT
+Trigger     --> LibUsers     : <b>5.</b> auto-create profile\n(role = 'member')
+GoTrue      --> SbClient     : <b>6.</b> ES256 JWT\n(iss=.../auth/v1, aud=authenticated)
+
+' ══ 2. Authenticated API call ═════════════════════════════════════════════════
+AuthCtx     --> Axios        : session
+Axios       --> SbClient     : getSession() in request interceptor
+Axios       --> Endpoints    : <b>7.</b> HTTPS + Authorization: Bearer <JWT>
+
+' ══ 3. Token validation ═══════════════════════════════════════════════════════
+Endpoints   --> JwtBearer    : <b>8.</b> validate
+JwtBearer   --> KeyResolver
+KeyResolver --> JWKS         : <b>9.</b> fetch public keys\n(built manually — GetSigningKeys()\nskips key_ops=["verify"])
+JwtBearer   --> RoleMw       : <b>10.</b> ClaimsPrincipal (sub = user id)
+RoleMw      --> LibUsers     : <b>11.</b> SELECT role WHERE id = sub
+RoleMw      --> Policies     : <b>12.</b> inject "user_role" claim
+Policies    --> Endpoints    : <b>13.</b> allow / 403
+
+' ══ 4. Data access ════════════════════════════════════════════════════════════
+Endpoints   --> Repos
+Repos       --> PG           : <b>14.</b> Npgsql direct TCP :5432\nConnectionStrings:Supabase\n<b>postgres superuser — bypasses RLS</b>
+Repos       --> Books
+Repos       --> Loans
+
+' ══ 5. Enrichment ═════════════════════════════════════════════════════════════
+Endpoints   ..> OpenLib      : cover / metadata lookup
+Endpoints   ..> Groq         : AI summary & recommendations\n(rate-limited 10/min)
+
+legend right
+  |<#EEF6FF> **What Supabase provides** |
+  | Google OAuth via GoTrue |
+  | ES256 JWT issuance + JWKS |
+  | Managed Postgres 16 (data store) |
+  | auth.users -> library_users trigger |
+  |<#FFF4F4> **What it does NOT provide** |
+  | No PostgREST / supabase-js data calls |
+  | No Realtime, Storage, or Edge Functions |
+  | RLS policies exist in schema.sql but the |
+  | backend connects as postgres and bypasses them |
+endlegend
+
+@enduml

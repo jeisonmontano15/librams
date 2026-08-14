@@ -38,26 +38,27 @@ public class LoanRepositoryTests(TestDbFixture fixture) : IAsyncLifetime
         return (new BookRepository(factory), new LoanRepository(factory));
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CheckOutAsync_AvailableBook_CreatesLoan()
     {
-        if (!TestDbFixture.IsAvailable) return;
+        TestDbFixture.SkipIfUnavailable();
         var (books, loans) = BuildRepos();
         var book = await books.CreateAsync(new CreateBookRequest("LoanTest1", "Author", null, null, null, null, null));
         _bookIds.Add(book.Id);
 
         var userId = Guid.NewGuid();
-        var loan = await loans.CheckOutAsync(book.Id, userId, "test@example.com");
+        var result = await loans.CheckOutAsync(book.Id, userId, "test@example.com");
 
-        Assert.NotNull(loan);
-        Assert.Equal(book.Id, loan.BookId);
-        Assert.Equal(userId, loan.UserId);
+        Assert.Equal(CheckOutOutcome.Success, result.Outcome);
+        Assert.NotNull(result.Loan);
+        Assert.Equal(book.Id, result.Loan.BookId);
+        Assert.Equal(userId, result.Loan.UserId);
     }
 
-    [Fact]
-    public async Task CheckOutAsync_CheckedOutBook_ReturnsNull()
+    [SkippableFact]
+    public async Task CheckOutAsync_CheckedOutBook_ReturnsUnavailable()
     {
-        if (!TestDbFixture.IsAvailable) return;
+        TestDbFixture.SkipIfUnavailable();
         var (books, loans) = BuildRepos();
         var book = await books.CreateAsync(new CreateBookRequest("LoanTest2", "Author", null, null, null, null, null));
         _bookIds.Add(book.Id);
@@ -65,25 +66,96 @@ public class LoanRepositoryTests(TestDbFixture fixture) : IAsyncLifetime
         var userId = Guid.NewGuid();
         await loans.CheckOutAsync(book.Id, userId, "test@example.com");
 
-        var secondLoan = await loans.CheckOutAsync(book.Id, Guid.NewGuid(), "other@example.com");
-        Assert.Null(secondLoan);
+        var second = await loans.CheckOutAsync(book.Id, Guid.NewGuid(), "other@example.com");
+        Assert.Equal(CheckOutOutcome.Unavailable, second.Outcome);
+        Assert.Null(second.Loan);
     }
 
-    [Fact]
+    // ── BUG-3 regression: an unknown book id must be distinguishable from a borrowed one ──
+    // Before the fix CheckOutAsync answered null for both, so the endpoint reported 409
+    // Conflict for a book that does not exist.
+
+    [SkippableFact]
+    public async Task CheckOutAsync_UnknownBookId_ReturnsNotFound()
+    {
+        TestDbFixture.SkipIfUnavailable();
+        var (_, loans) = BuildRepos();
+
+        var result = await loans.CheckOutAsync(Guid.NewGuid(), Guid.NewGuid(), "test@example.com");
+
+        Assert.Equal(CheckOutOutcome.NotFound, result.Outcome);
+        Assert.Null(result.Loan);
+    }
+
+    [SkippableFact]
     public async Task CheckInAsync_ActiveLoan_ReturnsLoanAndFreesBook()
     {
-        if (!TestDbFixture.IsAvailable) return;
+        TestDbFixture.SkipIfUnavailable();
         var (books, loans) = BuildRepos();
         var book = await books.CreateAsync(new CreateBookRequest("LoanTest3", "Author", null, null, null, null, null));
         _bookIds.Add(book.Id);
 
         var userId = Guid.NewGuid();
-        var loan = await loans.CheckOutAsync(book.Id, userId, "test@example.com");
+        var loan = (await loans.CheckOutAsync(book.Id, userId, "test@example.com")).Loan;
         Assert.NotNull(loan);
 
-        var returned = await loans.CheckInAsync(loan.Id);
+        var returned = await loans.CheckInAsync(loan.Id, userId, isLibrarian: false);
         Assert.NotNull(returned);
         Assert.Equal(loan.Id, returned.Id);
+
+        var updatedBook = await books.GetByIdAsync(book.Id);
+        Assert.Equal(BookStatus.Available, updatedBook!.Status);
+    }
+
+    // ── BUG-2 regression: check-in must be scoped to the loan's owner ─────────────
+    // Before the fix CheckInAsync filtered on loan ID alone, so any authenticated user
+    // could return any loan by ID.
+
+    [SkippableFact]
+    public async Task CheckInAsync_LoanBelongingToAnotherMember_ReturnsNullAndLeavesLoanOutstanding()
+    {
+        TestDbFixture.SkipIfUnavailable();
+        var (books, loans) = BuildRepos();
+        var book = await books.CreateAsync(new CreateBookRequest("LoanTest4", "Author", null, null, null, null, null));
+        _bookIds.Add(book.Id);
+
+        var owner = Guid.NewGuid();
+        var loan = (await loans.CheckOutAsync(book.Id, owner, "owner@example.com")).Loan;
+        Assert.NotNull(loan);
+
+        // A different member attempts the return.
+        var returned = await loans.CheckInAsync(loan.Id, Guid.NewGuid(), isLibrarian: false);
+
+        Assert.Null(returned);
+
+        // The loan is still outstanding and the book is still checked out.
+        var stillActive = await loans.GetActiveLoanForBookAsync(book.Id);
+        Assert.NotNull(stillActive);
+        Assert.Equal(loan.Id, stillActive.Id);
+        Assert.Null(stillActive.ReturnedAt);
+
+        var stillOut = await books.GetByIdAsync(book.Id);
+        Assert.Equal(BookStatus.CheckedOut, stillOut!.Status);
+    }
+
+    [SkippableFact]
+    public async Task CheckInAsync_LibrarianReturningAnotherMembersLoan_Succeeds()
+    {
+        TestDbFixture.SkipIfUnavailable();
+        var (books, loans) = BuildRepos();
+        var book = await books.CreateAsync(new CreateBookRequest("LoanTest5", "Author", null, null, null, null, null));
+        _bookIds.Add(book.Id);
+
+        var owner = Guid.NewGuid();
+        var loan = (await loans.CheckOutAsync(book.Id, owner, "owner@example.com")).Loan;
+        Assert.NotNull(loan);
+
+        // Returns are processed at the desk, so a librarian returns on the member's behalf.
+        var returned = await loans.CheckInAsync(loan.Id, Guid.NewGuid(), isLibrarian: true);
+
+        Assert.NotNull(returned);
+        Assert.Equal(loan.Id, returned.Id);
+        Assert.NotNull(returned.ReturnedAt);
 
         var updatedBook = await books.GetByIdAsync(book.Id);
         Assert.Equal(BookStatus.Available, updatedBook!.Status);

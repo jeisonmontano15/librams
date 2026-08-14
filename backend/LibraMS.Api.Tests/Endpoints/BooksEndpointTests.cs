@@ -49,12 +49,26 @@ public class LibramsWebApplicationFactory : WebApplicationFactory<Program>
 public class BooksEndpointTests(LibramsWebApplicationFactory factory)
     : IClassFixture<LibramsWebApplicationFactory>
 {
-    [Fact]
-    public async Task GetBooks_ReturnsOk()
+    // The catalogue is library material, and the API connects to Postgres as an owner role,
+    // so RLS never applies to this traffic and these route attributes are the only access
+    // control. These endpoints used to be readable by anyone; they now require a user.
+    [Theory]
+    [InlineData("/api/books")]
+    [InlineData("/api/books/genres")]
+    [InlineData("/api/books/stats")]
+    public async Task GetBookReads_Unauthenticated_Returns401(string route)
     {
         var client = factory.CreateClient();
-        var response = await client.GetAsync("/api/books");
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var response = await client.GetAsync(route);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetBookById_Unauthenticated_Returns401()
+    {
+        var client = factory.CreateClient();
+        var response = await client.GetAsync($"/api/books/{Guid.NewGuid()}");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]

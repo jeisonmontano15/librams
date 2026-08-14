@@ -1,9 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Sparkles, Plus, BookOpen, Filter } from 'lucide-react';
 import { clsx } from 'clsx';
 import { debounce } from '../lib/utils';
-import { useBooks, useGenres, useAiSearch, useCreateBook } from '../hooks/useApi';
+import { useBooks, useGenres, useAiSearch, useCreateBook, runMutation } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import type { Book, BookStatus, CreateBookForm } from '../types';
 import { BookFormModal } from '../components/books/BookFormModal';
@@ -28,29 +28,68 @@ export function BooksPage() {
 
   const [showForm, setShowForm] = useState(false);
 
-  const { data, isLoading } = useBooks(
-    aiBooks ? { page: 1, pageSize: 0 } : { query, genre, status: status || undefined, page, pageSize: 20 }
+  // While AI results are showing, the catalogue query is disabled outright. It used to be
+  // asked for `pageSize: 0`, which the API's `> 0` guard turned back into 20 — a wasted
+  // request whose `total` (the *unfiltered* catalogue count) then contradicted the AI
+  // results rendered below it.
+  const { data, isLoading: booksLoading } = useBooks(
+    { query, genre, status: status || undefined, page, pageSize: 20 },
+    { enabled: !aiBooks },
   );
+
+  // A disabled query still reports isLoading, so the skeleton only applies while the
+  // catalogue query is the one actually running.
+  const isLoading = !aiBooks && booksLoading;
 
   const { mutateAsync: aiSearch, isPending: aiSearching } = useAiSearch();
   const { mutateAsync: createBook, isPending: creating }  = useCreateBook();
 
   const displayBooks = aiBooks ?? data?.items ?? [];
 
-  const debouncedSetQuery = useCallback(debounce((v: unknown) => { setQuery(v as string); setPage(1); }, 400), []);
+  // The search box is controlled by `queryInput` while `query` — the debounced value — is
+  // what actually drives the request. Previously the input was uncontrolled, so clearing
+  // AI mode reset the filter but left the typed text visible in the box.
+  const [queryInput, setQueryInput] = useState('');
+
+  // `useCallback` re-evaluated `debounce(...)` on every render and threw all but the first
+  // away, so the timer being cleared was never the one that had been scheduled. useMemo with
+  // a stable dep list creates it once; the cleanup drops a pending call at unmount so a
+  // 400ms timer cannot fire a setState after navigation.
+  const debouncedSetQuery = useMemo(
+    () => debounce((v: string) => { setQuery(v); setPage(1); }, 400),
+    [],
+  );
+  useEffect(() => debouncedSetQuery.cancel, [debouncedSetQuery]);
+
+  const handleQueryChange = (v: string) => {
+    setQueryInput(v);
+    debouncedSetQuery(v);
+  };
 
   const handleAiSearch = async () => {
     if (!aiQuery.trim()) return;
-    const result = await aiSearch(aiQuery);
+    const result = await runMutation(aiSearch(aiQuery));
+    if (!result) return;
     setAiResult(result.parsed);
     setAiBooks(result.results.items);
     toast.success('AI search complete');
   };
 
-  const clearAiSearch = () => { setAiBooks(null); setAiResult(null); setAiQuery(''); };
+  // Leaving AI mode restores the standard catalogue view, so the text filter and the box
+  // showing it are both reset together.
+  const clearAiSearch = () => {
+    setAiBooks(null);
+    setAiResult(null);
+    setAiQuery('');
+    debouncedSetQuery.cancel();
+    setQueryInput('');
+    setQuery('');
+    setPage(1);
+  };
 
   const handleCreate = async (form: CreateBookForm) => {
-    await createBook(form);
+    const created = await runMutation(createBook(form));
+    if (!created) return;
     toast.success('Book added to catalogue');
     setShowForm(false);
   };
@@ -62,7 +101,9 @@ export function BooksPage() {
         <div>
           <h1 className="font-serif text-3xl text-ink-900">Catalogue</h1>
           <p className="text-ink-400 text-sm font-sans mt-1">
-            {data?.total ?? 0} books in the library
+            {aiBooks
+              ? `${aiBooks.length} book${aiBooks.length === 1 ? '' : 's'} matched`
+              : `${data?.total ?? 0} books in the library`}
           </p>
         </div>
         {isLibrarian && (
@@ -126,7 +167,8 @@ export function BooksPage() {
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-300" />
             <input
-              onChange={e => debouncedSetQuery(e.target.value)}
+              value={queryInput}
+              onChange={e => handleQueryChange(e.target.value)}
               placeholder="Search by title, author, or description…"
               className="w-full pl-9 pr-4 py-2.5 bg-paper-light border border-ink-200 rounded-sm text-sm font-sans focus:outline-none focus:border-ink-400"
             />

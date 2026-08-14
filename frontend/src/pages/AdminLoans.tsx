@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { AlertCircle, BookMarked, RotateCcw } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { clsx } from 'clsx';
-import { useAllActiveLoans, useOverdueLoans, useCheckIn } from '../hooks/useApi';
+import { useAllActiveLoans, useOverdueLoans, useCheckIn, runMutation } from '../hooks/useApi';
 import toast from 'react-hot-toast';
 import type { Loan } from '../types';
 
@@ -13,8 +13,8 @@ export function AdminLoans() {
   const { mutateAsync: checkIn, isPending } = useCheckIn();
 
   const handleCheckIn = async (loan: Loan) => {
-    await checkIn(loan.id);
-    toast.success(`"${loan.book?.title}" checked in`);
+    const returned = await runMutation(checkIn(loan.id));
+    if (returned) toast.success(`"${loan.book?.title}" checked in`);
   };
 
   const loans     = tab === 'active' ? active : overdue;

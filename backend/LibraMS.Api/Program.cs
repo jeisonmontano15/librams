@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Carter;
 using Dapper;
+using LibraMS.Api;
 using FluentValidation;
 using LibraMS.Api.Data;
 using LibraMS.Api.Middleware;
@@ -25,6 +25,12 @@ builder.Host.UseSerilog();
 var supabaseUrl = builder.Configuration["Supabase:Url"]
     ?? throw new InvalidOperationException("Supabase:Url not configured");
 
+// One HttpClient and one cached key set for the process — the resolver below runs on
+// every authenticated request, so a per-validation client and fetch would be a network
+// round trip per request plus a socket exhaustion risk.
+var jwksHttpClient = new System.Net.Http.HttpClient();
+var signingKeys = SupabaseSigningKeys.ForSupabase(supabaseUrl, jwksHttpClient);
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -41,41 +47,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidAlgorithms = new[] { "RS256", "ES256" },
             IssuerSigningKeyResolver = (token, securityToken, kid, parameters) =>
-            {
-                try
-                {
-                    using var client = new System.Net.Http.HttpClient();
-                    var jwksUrl = supabaseUrl + "/auth/v1/.well-known/jwks.json";
-                    var json = client.GetStringAsync(jwksUrl).GetAwaiter().GetResult();
-                    var keySet = new JsonWebKeySet(json);
-
-                    // Build ECDsa keys manually — GetSigningKeys() skips keys
-                    // with key_ops=["verify"] (Supabase uses this for public keys)
-                    var keys = new List<SecurityKey>();
-                    foreach (var jwk in keySet.Keys.Where(k => k.Kty == "EC"))
-                    {
-                        var ecParams = new ECParameters
-                        {
-                            Curve = ECCurve.NamedCurves.nistP256,
-                            Q = new ECPoint
-                            {
-                                X = Base64UrlEncoder.DecodeBytes(jwk.X),
-                                Y = Base64UrlEncoder.DecodeBytes(jwk.Y),
-                            }
-                        };
-                        var ecdsa = ECDsa.Create(ecParams);
-                        var ecKey = new ECDsaSecurityKey(ecdsa) { KeyId = jwk.Kid };
-                        keys.Add(ecKey);
-                    }
-                    Log.Information("JWKS resolved {Count} EC keys", keys.Count);
-                    return keys;
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Failed to fetch JWKS from Supabase");
-                    return Enumerable.Empty<SecurityKey>();
-                }
-            },
+                signingKeys.Get(),
         };
         options.Events = new JwtBearerEvents
         {
@@ -96,6 +68,7 @@ builder.Services.AddAuthorization(options =>
 });
 
 // ── Services ──────────────────────────────────────────────────────────────────
+builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<DbConnectionFactory>();
 builder.Services.AddScoped<IBookRepository, BookRepository>();
 builder.Services.AddScoped<ILoanRepository, LoanRepository>();
@@ -111,13 +84,9 @@ builder.Services.AddSwaggerGen();
 
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("ai-limit", limiterOptions =>
-    {
-        limiterOptions.PermitLimit = 10;
-        limiterOptions.Window = TimeSpan.FromSeconds(60);
-        limiterOptions.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        limiterOptions.QueueLimit = 0;
-    });
+    // Partitioned per caller: authenticated user id, falling back to remote IP.
+    // An unpartitioned limiter would let one caller exhaust the quota for everyone.
+    options.AddPolicy(AiRateLimitPolicy.Name, AiRateLimitPolicy.GetPartition);
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
     options.OnRejected = async (ctx, _) =>
     {
@@ -133,6 +102,9 @@ builder.Services.AddCors(options =>
                 builder.Configuration["Frontend:Url"] ?? "http://localhost:5173",
                 "https://*.vercel.app",
                 "https://*.azurestaticapps.net")
+              // Without this, the "*.vercel.app" entries above are compared as literal
+              // strings and never match a real origin.
+              .SetIsOriginAllowedToAllowWildcardSubdomains()
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials());

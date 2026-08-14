@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
+import { AuthProvider } from '../hooks/useAuth';
 import { BookFormModal } from '../components/books/BookFormModal';
 
 vi.mock('../hooks/useApi', () => ({
@@ -7,6 +8,7 @@ vi.mock('../hooks/useApi', () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
+  runMutation: (p: Promise<unknown>) => p.catch(() => undefined),
 }));
 
 vi.mock('../lib/supabase', () => ({
@@ -23,8 +25,12 @@ describe('BookFormModal', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
 
+    // The modal reads the caller's role to decide whether to offer AI generation, so it
+    // needs the auth context.
     render(
-      <BookFormModal onClose={onClose} onSubmit={onSubmit} loading={false} />
+      <AuthProvider>
+        <BookFormModal onClose={onClose} onSubmit={onSubmit} loading={false} />
+      </AuthProvider>
     );
 
     fireEvent.change(screen.getByPlaceholderText('Book title'), {

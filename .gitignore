@@ -23,3 +23,6 @@ Thumbs.db
 
 # IDE
 .vscode/
+
+# Local MCP server config — contains environment-specific Azure subscription/tenant IDs
+.mcp.json

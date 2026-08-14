@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Sparkles, BookMarked, RotateCcw, Pencil, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
-import { useBook, useCheckOut, useDeleteBook, useAiDescribe, useUpdateBook, useMyLoans } from '../hooks/useApi';
+import { useBook, useCheckOut, useDeleteBook, useAiDescribe, useUpdateBook, useMyLoans, runMutation } from '../hooks/useApi';
 import { useAuth } from '../hooks/useAuth';
 import { BookFormModal } from '../components/books/BookFormModal';
 import toast from 'react-hot-toast';
@@ -25,29 +25,34 @@ export function BookDetail() {
 
   const activeLoan = myLoans?.find(l => l.bookId === id && l.status !== 'returned');
 
+  // Each of these guards on the mutation's result: a rejection is already reported by the
+  // shared onError toast, and the success toast / navigation must not run after a failure.
   const handleCheckOut = async () => {
     if (!id) return;
-    await checkOut(id);
-    toast.success('Book checked out! Due in 14 days.');
+    const loan = await runMutation(checkOut(id));
+    if (loan) toast.success('Book checked out! Due in 14 days.');
   };
 
   const handleDelete = async () => {
     if (!id || !confirm('Delete this book from the catalogue?')) return;
-    await deleteBook(id);
+    const deleted = await runMutation(deleteBook(id));
+    if (!deleted) return;
     toast.success('Book deleted');
     navigate('/books');
   };
 
   const handleAiDescribe = async () => {
     if (!book) return;
-    const result = await aiDescribe({ title: book.title, author: book.author, isbn: book.isbn });
+    const result = await runMutation(aiDescribe({ title: book.title, author: book.author, isbn: book.isbn }));
+    if (!result) return;
     setAiDesc(result);
     toast.success('AI description generated');
   };
 
   const handleUpdate = async (form: CreateBookForm) => {
     if (!id) return;
-    await updateBook({ id, data: form });
+    const updated = await runMutation(updateBook({ id, data: form }));
+    if (!updated) return;
     toast.success('Book updated');
     setShowEdit(false);
   };

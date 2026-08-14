@@ -26,6 +26,18 @@ public record DashboardStats
 
 public class BookRepository(DbConnectionFactory db) : IBookRepository
 {
+    /// <summary>
+    /// The book column list. <c>status</c> is aliased to <c>status_raw</c> so it lands on
+    /// <see cref="Book.StatusRaw"/> (via MatchNamesWithUnderscores) rather than being parsed
+    /// straight onto the <see cref="BookStatus"/> enum, which Dapper cannot do for the
+    /// stored snake_case text. Every query that materializes a Book must use this list —
+    /// a bare <c>SELECT *</c> reintroduces the defect.
+    /// </summary>
+    internal const string BookColumns = """
+        id, title, author, isbn, genre, published_year, description, cover_url,
+        status AS status_raw, created_at, updated_at
+        """;
+
     public async Task<PagedResult<Book>> SearchAsync(BookSearchRequest req)
     {
         using var conn = db.Create();
@@ -39,48 +51,52 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
         }
         if (!string.IsNullOrWhiteSpace(req.Genre))
         {
+            // ILIKE without wildcards: a full, case-insensitive match. The genre dropdown is
+            // populated from GetGenresAsync(), so partial matching only ever mixed in siblings
+            // like "Non-Fiction" and "Science Fiction" under a "Fiction" filter.
             conditions.Add("genre ILIKE @genre");
-            parameters.Add("genre", $"%{req.Genre}%");
+            parameters.Add("genre", req.Genre);
         }
         if (req.Status.HasValue)
         {
             conditions.Add("status = @status");
-            parameters.Add("status", req.Status.Value switch
-            {
-                BookStatus.Available   => "available",
-                BookStatus.CheckedOut  => "checked_out",
-                _                      => req.Status.Value.ToString().ToLower()
-            });
+            parameters.Add("status", BookStatusText.ToText(req.Status.Value));
         }
 
+        // Endpoints clamp these, but the repository is called directly too (AI search, the
+        // recommendation catalogue, tests). A negative page here would reach Postgres as a
+        // negative OFFSET and error, so normalise rather than trust the caller.
+        var page = Math.Max(req.Page, 1);
+        var pageSize = Math.Clamp(req.PageSize, 1, 100);
+
         var where = string.Join(" AND ", conditions);
-        var offset = (req.Page - 1) * req.PageSize;
-        parameters.Add("limit", req.PageSize);
+        var offset = (page - 1) * pageSize;
+        parameters.Add("limit", pageSize);
         parameters.Add("offset", offset);
 
         var countSql = $"SELECT COUNT(*) FROM public.books WHERE {where}";
-        var dataSql  = $"SELECT * FROM public.books WHERE {where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset";
+        var dataSql  = $"SELECT {BookColumns} FROM public.books WHERE {where} ORDER BY created_at DESC LIMIT @limit OFFSET @offset";
 
         var total = await conn.ExecuteScalarAsync<int>(countSql, parameters);
         var items = await conn.QueryAsync<Book>(dataSql, parameters);
 
-        return new PagedResult<Book>(items, total, req.Page, req.PageSize);
+        return new PagedResult<Book>(items, total, page, pageSize);
     }
 
     public async Task<Book?> GetByIdAsync(Guid id)
     {
         using var conn = db.Create();
         return await conn.QuerySingleOrDefaultAsync<Book>(
-            "SELECT * FROM public.books WHERE id = @id", new { id });
+            $"SELECT {BookColumns} FROM public.books WHERE id = @id", new { id });
     }
 
     public async Task<Book> CreateAsync(CreateBookRequest req)
     {
         using var conn = db.Create();
-        const string sql = """
+        const string sql = $"""
             INSERT INTO public.books (title, author, isbn, genre, published_year, description, cover_url)
             VALUES (@Title, @Author, @Isbn, @Genre, @PublishedYear, @Description, @CoverUrl)
-            RETURNING *
+            RETURNING {BookColumns}
             """;
         return await conn.QuerySingleAsync<Book>(sql, req);
     }
@@ -88,18 +104,28 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
     public async Task<Book?> UpdateAsync(Guid id, UpdateBookRequest req)
     {
         using var conn = db.Create();
-        const string sql = """
+        // Omitted (null) means unchanged throughout. For the three optional descriptive
+        // fields an empty string additionally means "clear it" — plain COALESCE cannot
+        // express that, so a librarian could never remove a description once set.
+        // Title and author are required, and isbn/published_year are not clearable in the UI.
+        const string sql = $"""
             UPDATE public.books SET
                 title          = COALESCE(@Title, title),
                 author         = COALESCE(@Author, author),
                 isbn           = COALESCE(@Isbn, isbn),
-                genre          = COALESCE(@Genre, genre),
+                genre          = CASE WHEN @Genre IS NULL THEN genre
+                                      WHEN @Genre = ''    THEN NULL
+                                      ELSE @Genre END,
                 published_year = COALESCE(@PublishedYear, published_year),
-                description    = COALESCE(@Description, description),
-                cover_url      = COALESCE(@CoverUrl, cover_url),
+                description    = CASE WHEN @Description IS NULL THEN description
+                                      WHEN @Description = ''    THEN NULL
+                                      ELSE @Description END,
+                cover_url      = CASE WHEN @CoverUrl IS NULL THEN cover_url
+                                      WHEN @CoverUrl = ''    THEN NULL
+                                      ELSE @CoverUrl END,
                 updated_at     = NOW()
             WHERE id = @Id
-            RETURNING *
+            RETURNING {BookColumns}
             """;
         return await conn.QuerySingleOrDefaultAsync<Book>(sql, new { req.Title, req.Author, req.Isbn, req.Genre, req.PublishedYear, req.Description, req.CoverUrl, Id = id });
     }
@@ -116,7 +142,7 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
         using var conn = db.Create();
         var rows = await conn.ExecuteAsync(
             "UPDATE public.books SET status = @status WHERE id = @id",
-            new { status = status switch { BookStatus.Available => "available", BookStatus.CheckedOut => "checked_out", _ => status.ToString().ToLower() }, id });
+            new { status = BookStatusText.ToText(status), id });
         return rows > 0;
     }
 
@@ -135,7 +161,10 @@ public class BookRepository(DbConnectionFactory db) : IBookRepository
                 (SELECT COUNT(*) FROM public.books) AS TotalBooks,
                 (SELECT COUNT(*) FROM public.books WHERE status = 'available') AS Available,
                 (SELECT COUNT(*) FROM public.books WHERE status = 'checked_out') AS CheckedOut,
-                (SELECT COUNT(*) FROM public.loans WHERE status = 'overdue') AS Overdue,
+                -- Overdue is derived here exactly as LoanRepository derives it, so the
+                -- dashboard tile cannot disagree with the admin list.
+                (SELECT COUNT(*) FROM public.loans
+                  WHERE status <> 'returned' AND (due_date < NOW() OR status = 'overdue')) AS Overdue,
                 (SELECT COUNT(*) FROM public.loans) AS TotalLoans
             """;
         return await conn.QuerySingleAsync<DashboardStats>(sql);
