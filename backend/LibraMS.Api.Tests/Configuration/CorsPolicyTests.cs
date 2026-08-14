@@ -47,6 +47,7 @@ public class CorsPolicyTests(LibramsWebApplicationFactory factory)
     public void ConfiguredFrontendOrigin_IsStillAllowed()
     {
         // The explicit Frontend:Url entry must keep working alongside the wildcards.
+        // The factory pins Frontend:Url to this origin.
         Assert.True(DefaultPolicy().IsOriginAllowed("http://localhost:5173"));
     }
 }
