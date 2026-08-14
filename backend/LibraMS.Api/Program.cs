@@ -5,6 +5,7 @@ using LibraMS.Api;
 using FluentValidation;
 using LibraMS.Api.Data;
 using LibraMS.Api.Middleware;
+using LibraMS.Api.Serialization;
 using LibraMS.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
@@ -78,7 +79,12 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>();
 builder.Services.AddHttpClient<IOpenLibraryService, OpenLibraryService>();
 builder.Services.AddCarter();
 builder.Services.ConfigureHttpJsonOptions(options =>
-    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+{
+    options.SerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    // Status enums must go over the wire as their database text, not as ordinals.
+    options.SerializerOptions.Converters.Add(new BookStatusJsonConverter());
+    options.SerializerOptions.Converters.Add(new LoanStatusJsonConverter());
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
