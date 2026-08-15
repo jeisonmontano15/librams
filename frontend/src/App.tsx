@@ -15,7 +15,7 @@ const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, staleTime: 1
 
 function Protected({ children, librarianOnly = false }: { children: ReactNode; librarianOnly?: boolean }) {
   const { session, isLibrarian, loading } = useAuth();
-  if (loading) return <div className="flex h-screen items-center justify-center text-ink-400 font-sans">Loading…</div>;
+  if (loading) return <div className="flex h-[100dvh] items-center justify-center text-ink-400 font-sans">Loading…</div>;
   if (!session) return <Navigate to="/login" replace />;
   if (librarianOnly && !isLibrarian) return <Navigate to="/" replace />;
   return <>{children}</>;
