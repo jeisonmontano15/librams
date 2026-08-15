@@ -58,10 +58,10 @@ export function BookDetail() {
   };
 
   if (isLoading) return (
-    <div className="p-8 animate-pulse max-w-3xl">
+    <div className="p-4 sm:p-6 lg:p-8 animate-pulse max-w-3xl">
       <div className="h-6 bg-ink-100 rounded w-24 mb-8" />
-      <div className="flex gap-8">
-        <div className="w-40 aspect-[2/3] bg-ink-100 rounded-book shadow-book flex-shrink-0" />
+      <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
+        <div className="w-32 sm:w-40 aspect-[2/3] bg-ink-100 rounded-book shadow-book flex-shrink-0" />
         <div className="flex-1 space-y-3">
           <div className="h-8 bg-ink-100 rounded w-3/4" />
           <div className="h-4 bg-ink-100 rounded w-1/2" />
@@ -72,26 +72,28 @@ export function BookDetail() {
   );
 
   if (!book) return (
-    <div className="p-8 text-center">
+    <div className="p-4 sm:p-6 lg:p-8 text-center">
       <p className="font-serif text-xl text-ink-400">Book not found</p>
       <button onClick={() => navigate('/books')} className="mt-4 text-sm text-ochre font-sans hover:underline">Back to catalogue</button>
     </div>
   );
 
   return (
-    <div className="p-8 max-w-3xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       {/* Back */}
       <button
         onClick={() => navigate('/books')}
-        className="flex items-center gap-1.5 text-sm text-ink-400 font-sans hover:text-ink-900 transition-colors mb-8"
+        className="flex items-center gap-1.5 text-sm text-ink-400 font-sans hover:text-ink-900 transition-colors mb-6 sm:mb-8"
       >
         <ArrowLeft size={14} />
         Back to catalogue
       </button>
 
-      <div className="flex gap-8">
+      {/* Stacks under `sm`, where a fixed 10rem cover beside the text leaves the copy
+          squeezed into the remaining sliver of a phone viewport. */}
+      <div className="flex flex-col sm:flex-row gap-6 sm:gap-8">
         {/* Cover */}
-        <div className="w-40 flex-shrink-0">
+        <div className="w-32 sm:w-40 flex-shrink-0">
           <div className="aspect-[2/3] bg-ink-100 rounded-book shadow-book overflow-hidden">
             {book.coverUrl ? (
               <img src={book.coverUrl} alt={book.title} className="w-full h-full object-cover" />

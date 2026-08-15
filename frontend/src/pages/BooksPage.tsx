@@ -95,11 +95,11 @@ export function BooksPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-serif text-3xl text-ink-900">Catalogue</h1>
+      <div className="flex items-start justify-between gap-3 mb-6">
+        <div className="min-w-0">
+          <h1 className="font-serif text-2xl sm:text-3xl text-ink-900">Catalogue</h1>
           <p className="text-ink-400 text-sm font-sans mt-1">
             {aiBooks
               ? `${aiBooks.length} book${aiBooks.length === 1 ? '' : 's'} matched`
@@ -109,7 +109,7 @@ export function BooksPage() {
         {isLibrarian && (
           <button
             onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-ink-900 text-paper text-sm font-sans rounded-sm hover:bg-ink-700 transition-colors"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-ink-900 text-paper text-sm font-sans rounded-sm hover:bg-ink-700 transition-colors flex-shrink-0 whitespace-nowrap"
           >
             <Plus size={14} />
             Add book
@@ -138,8 +138,9 @@ export function BooksPage() {
 
       {/* Search bar */}
       {aiMode ? (
-        <div className="flex gap-2 mb-4">
-          <div className="relative flex-1">
+        // Stacks under `sm`: three controls on one row leave the input too narrow to read.
+        <div className="flex flex-col sm:flex-row gap-2 mb-4">
+          <div className="relative flex-1 min-w-0">
             <Sparkles size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ochre" />
             <input
               value={aiQuery}
@@ -149,18 +150,20 @@ export function BooksPage() {
               className="w-full pl-9 pr-4 py-2.5 bg-paper-light border border-ink-200 rounded-sm text-sm font-sans focus:outline-none focus:border-ochre/50 focus:ring-1 focus:ring-ochre/20"
             />
           </div>
-          <button
-            onClick={handleAiSearch}
-            disabled={aiSearching || !aiQuery.trim()}
-            className="px-4 py-2 bg-ochre text-paper text-sm font-sans rounded-sm hover:bg-ochre-dark transition-colors disabled:opacity-60"
-          >
-            {aiSearching ? 'Thinking…' : 'Search'}
-          </button>
-          {aiBooks && (
-            <button onClick={clearAiSearch} className="px-3 py-2 border border-ink-200 text-ink-500 text-sm font-sans rounded-sm hover:bg-ink-100">
-              Clear
+          <div className="flex gap-2">
+            <button
+              onClick={handleAiSearch}
+              disabled={aiSearching || !aiQuery.trim()}
+              className="flex-1 sm:flex-none px-4 py-2 bg-ochre text-paper text-sm font-sans rounded-sm hover:bg-ochre-dark transition-colors disabled:opacity-60 whitespace-nowrap"
+            >
+              {aiSearching ? 'Thinking…' : 'Search'}
             </button>
-          )}
+            {aiBooks && (
+              <button onClick={clearAiSearch} className="flex-1 sm:flex-none px-3 py-2 border border-ink-200 text-ink-500 text-sm font-sans rounded-sm hover:bg-ink-100 whitespace-nowrap">
+                Clear
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         <div className="flex gap-2 mb-4">
@@ -186,7 +189,7 @@ export function BooksPage() {
 
       {/* Filters (standard mode) */}
       {!aiMode && (
-        <div className="flex flex-wrap gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6 items-center">
           <div className="flex items-center gap-1.5 text-xs text-ink-400">
             <Filter size={12} />
           </div>
@@ -251,7 +254,7 @@ export function BooksPage() {
 
       {/* Pagination */}
       {!aiBooks && data && data.total > 20 && (
-        <div className="flex items-center justify-center gap-4 mt-10">
+        <div className="flex items-center justify-center gap-2 sm:gap-4 mt-10">
           <button
             disabled={page === 1}
             onClick={() => setPage(p => p - 1)}

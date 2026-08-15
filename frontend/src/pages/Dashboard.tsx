@@ -10,7 +10,7 @@ function StatCard({ label, value, icon, accent = false, warn = false }: {
 }) {
   return (
     <div className={clsx(
-      'p-5 rounded-sm border',
+      'p-4 sm:p-5 rounded-sm border',
       warn   ? 'bg-red-50 border-red-100' :
       accent ? 'bg-ochre-light border-ochre/20' :
                'bg-paper-light border-ink-100'
@@ -23,7 +23,7 @@ function StatCard({ label, value, icon, accent = false, warn = false }: {
       )}>
         {icon}
       </div>
-      <p className={clsx('text-3xl font-serif', warn ? 'text-red-700' : accent ? 'text-ochre-dark' : 'text-ink-900')}>
+      <p className={clsx('text-2xl sm:text-3xl font-serif', warn ? 'text-red-700' : accent ? 'text-ochre-dark' : 'text-ink-900')}>
         {value ?? '—'}
       </p>
       <p className="text-xs text-ink-400 font-sans mt-1">{label}</p>
@@ -38,10 +38,10 @@ export function Dashboard() {
   const navigate = useNavigate();
 
   return (
-    <div className="p-8 max-w-5xl">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-5xl">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="font-serif text-3xl text-ink-900">
+        <h1 className="font-serif text-2xl sm:text-3xl text-ink-900">
           Good {getTimeOfDay()}, {profile?.displayName?.split(' ')[0] ?? 'Reader'}
         </h1>
         <p className="text-ink-400 font-sans text-sm mt-1">
@@ -50,7 +50,7 @@ export function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-10">
         <StatCard label="Total books"  value={stats?.totalBooks}  icon={<BookOpen size={16} />} />
         <StatCard label="Available"    value={stats?.available}   icon={<BookOpen size={16} />} accent />
         <StatCard label="Checked out"  value={stats?.checkedOut}  icon={<BookMarked size={16} />} />
@@ -66,11 +66,11 @@ export function Dashboard() {
         </div>
 
         {recsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {[0,1,2].map(i => <div key={i} className="h-32 bg-ink-100 rounded-sm animate-pulse" />)}
           </div>
         ) : recs?.recommendations?.length ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {recs.recommendations.map((rec, i) => (
               <div
                 key={i}

@@ -63,10 +63,12 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
   };
 
   return (
-    <div className="fixed inset-0 bg-ink-900/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-paper rounded-sm w-full max-w-lg shadow-2xl">
+    <div className="fixed inset-0 bg-ink-900/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      {/* Capped to the viewport so a long form scrolls inside the card instead of running
+          off the bottom of a phone screen with the submit buttons out of reach. */}
+      <div className="bg-paper rounded-sm w-full max-w-lg shadow-2xl my-auto max-h-[calc(100dvh-2rem)] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-ink-100">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-ink-100 flex-shrink-0">
           <h2 className="font-serif text-xl text-ink-900">
             {initialData ? 'Edit book' : 'Add book'}
           </h2>
@@ -75,8 +77,8 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-5 space-y-4 overflow-y-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Title *" required>
               <input required maxLength={MAX_TITLE} value={form.title} onChange={e => set('title', e.target.value)}
                 className="input" placeholder="Book title" />
@@ -87,7 +89,7 @@ export function BookFormModal({ initialData, onClose, onSubmit, loading }: Props
             </Field>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <Field label="ISBN">
               <input maxLength={MAX_ISBN} value={form.isbn ?? ''} onChange={e => set('isbn', e.target.value)}
                 className="input" placeholder="978…" />

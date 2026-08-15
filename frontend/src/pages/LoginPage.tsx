@@ -12,17 +12,17 @@ export function LoginPage() {
   }, [session, navigate]);
 
   return (
-    <div className="min-h-screen bg-ink-900 flex items-center justify-center p-6">
+    <div className="min-h-[100dvh] bg-ink-900 flex items-center justify-center p-4 sm:p-6 overflow-hidden">
       {/* Decorative background text */}
       <div className="absolute inset-0 overflow-hidden opacity-5 select-none pointer-events-none">
-        <p className="font-serif text-paper text-[12rem] leading-none whitespace-nowrap -rotate-12 translate-y-20 -translate-x-10">
+        <p className="font-serif text-paper text-[6rem] sm:text-[9rem] lg:text-[12rem] leading-none whitespace-nowrap -rotate-12 translate-y-20 -translate-x-10">
           READ LEARN DISCOVER
         </p>
       </div>
 
       <div className="relative w-full max-w-sm">
         {/* Card */}
-        <div className="bg-paper rounded-sm p-8 shadow-2xl">
+        <div className="bg-paper rounded-sm p-6 sm:p-8 shadow-2xl">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-8">
             <div className="w-10 h-10 bg-ink-900 rounded-sm flex items-center justify-center">
